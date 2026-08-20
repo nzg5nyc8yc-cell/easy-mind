@@ -1,0 +1,2260 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MindMap Studio</title>
+  <style>
+    :root {
+      --bg: #eef1f6;
+      --panel: #ffffff;
+      --border: #d9deea;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --accent-soft: #dbeafe;
+      --danger: #dc2626;
+      --toolbar-h: 58px;
+      --tabs-h: 44px;
+      --inspector-w: 320px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      font-family: Pretendard, "Noto Sans KR", "Malgun Gothic", Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      user-select: none;
+    }
+
+    button, input, textarea, select { font: inherit; }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) var(--inspector-w);
+      grid-template-rows: var(--toolbar-h) var(--tabs-h) minmax(0, 1fr);
+      width: 100%;
+      height: 100%;
+    }
+
+    .toolbar {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,.95);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, .05);
+      z-index: 20;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-right: 8px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .version-badge { font-size: 10px; font-weight: 800; color: #2563eb; background: #dbeafe; border-radius: 999px; padding: 3px 6px; }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #2563eb, #8b5cf6);
+      color: #fff;
+      font-size: 18px;
+      box-shadow: 0 5px 12px rgba(37,99,235,.22);
+    }
+
+    .tool-btn {
+      min-height: 38px;
+      padding: 0 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition: .15s ease;
+      white-space: nowrap;
+    }
+
+    .tool-btn:hover { border-color: #9fb0cd; background: #f8fafc; }
+    .tool-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .tool-btn.danger:hover { color: var(--danger); border-color: #f3a6a6; background: #fff7f7; }
+    .tool-btn.icon-only { width: 38px; padding: 0; }
+
+    .toolbar-spacer { flex: 1; }
+    .toolbar-sep { width: 1px; height: 28px; background: var(--border); margin: 0 2px; }
+
+    .zoom-label {
+      min-width: 58px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .tabs {
+      grid-column: 1 / 2;
+      grid-row: 2;
+      display: flex;
+      align-items: end;
+      gap: 4px;
+      padding: 6px 8px 0;
+      background: #f4f6fa;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      overflow-y: hidden;
+      z-index: 12;
+    }
+
+    .tab {
+      height: 37px;
+      min-width: 120px;
+      max-width: 220px;
+      padding: 0 12px;
+      border: 1px solid var(--border);
+      border-bottom: 0;
+      border-radius: 10px 10px 0 0;
+      background: #e9edf5;
+      color: #4b5563;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: #fff;
+      color: var(--text);
+      font-weight: 700;
+      position: relative;
+    }
+
+    .tab.active::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -1px;
+      height: 2px;
+      background: #fff;
+    }
+
+    .tab-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    .tab-close {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #8490a4;
+      font-size: 14px;
+    }
+
+    .tab-close:hover { background: #dbe2ee; color: var(--danger); }
+
+    .add-tab {
+      min-width: 36px;
+      height: 34px;
+      border: 1px dashed #aab4c6;
+      border-radius: 9px 9px 0 0;
+      background: transparent;
+      cursor: pointer;
+      margin-left: 2px;
+      color: #475569;
+      font-size: 20px;
+    }
+
+    .viewport-wrap {
+      grid-column: 1 / 2;
+      grid-row: 3;
+      min-width: 0;
+      min-height: 0;
+      position: relative;
+      background: #f8fafc;
+    }
+
+    #viewport {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      cursor: default;
+      background-color: #f8fafc;
+      background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    #viewport.panning { cursor: default; }
+    #viewport.connecting { cursor: default; }
+
+    #world {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 12000px;
+      height: 8000px;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    #edgeSvg {
+      position: absolute;
+      inset: 0;
+      width: 12000px;
+      height: 8000px;
+      overflow: visible;
+      pointer-events: auto;
+    }
+
+    #nodesLayer {
+      position: absolute;
+      inset: 0;
+      width: 12000px;
+      height: 8000px;
+      pointer-events: none;
+    }
+
+    .node {
+      position: absolute;
+      width: 184px;
+      height: 76px;
+      min-width: 100px;
+      min-height: 56px;
+      pointer-events: auto;
+      border: 2px solid rgba(15, 23, 42, .16);
+      border-radius: 14px;
+      padding: 13px 14px 11px;
+      background: #fff3bf;
+      box-shadow: 0 7px 18px rgba(15, 23, 42, .13);
+      cursor: move;
+      transition: box-shadow .12s ease, border-color .12s ease;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+
+    .node.image-node {
+      width: 184px;
+      height: 184px;
+      min-width: 80px;
+      min-height: 80px;
+      padding: 0;
+      background: #fff;
+      display: block;
+    }
+
+    .node-image {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+      object-position: center;
+      border-radius: 11px;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .image-node .node-image-title {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      min-height: 28px;
+      padding: 5px 8px;
+      border-radius: 8px;
+      background: rgba(15, 23, 42, .66);
+      color: #fff;
+      font-size: 13px;
+      line-height: 1.35;
+      font-weight: 800;
+      text-align: center;
+      word-break: break-word;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity .15s ease, transform .15s ease;
+    }
+
+    .image-node:hover .node-image-title,
+    .image-node.selected .node-image-title,
+    .image-node.connection-source .node-image-title {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .node:hover { box-shadow: 0 10px 23px rgba(15,23,42,.17); }
+    .node.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.16), 0 9px 22px rgba(15,23,42,.15); }
+    .node.connection-source { border-color: #7c3aed; box-shadow: 0 0 0 4px rgba(124,58,237,.18), 0 9px 22px rgba(15,23,42,.15); }
+
+    .resize-handle {
+      position: absolute;
+      right: 3px;
+      bottom: 3px;
+      width: 18px;
+      height: 18px;
+      border: 1px solid rgba(37, 99, 235, .8);
+      border-radius: 5px;
+      background:
+        linear-gradient(135deg, transparent 0 43%, rgba(37,99,235,.9) 44% 50%, transparent 51% 63%, rgba(37,99,235,.9) 64% 70%, transparent 71%),
+        rgba(255,255,255,.94);
+      box-shadow: 0 1px 4px rgba(15,23,42,.18);
+      cursor: nwse-resize;
+      display: none;
+      z-index: 8;
+      touch-action: none;
+    }
+
+    .node.selected .resize-handle { display: block; }
+    .node.image-node .resize-handle { background-color: rgba(255,255,255,.96); }
+
+    .node-title {
+      width: 100%;
+      min-height: 25px;
+      font-size: 16px;
+      line-height: 1.45;
+      font-weight: 800;
+      outline: none;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      white-space: pre-wrap;
+      user-select: text;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .node-meta {
+      margin-top: 6px;
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+      flex-wrap: wrap;
+      width: 100%;
+      font-size: 11px;
+      color: rgba(30,41,59,.72);
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .node-meta:empty { display: none; }
+
+    .chip {
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.58);
+      border: 1px solid rgba(15,23,42,.08);
+      max-width: 90px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .edge-visible {
+      fill: none;
+      stroke: #64748b;
+      stroke-width: 2.5;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+      pointer-events: none;
+    }
+
+    .edge-visible.selected {
+      stroke-width: 4;
+      filter: drop-shadow(0 0 3px rgba(37,99,235,.45));
+    }
+
+    .edge-hit {
+      fill: none;
+      stroke: transparent;
+      stroke-width: 15;
+      pointer-events: stroke;
+      cursor: pointer;
+    }
+
+    .edge-label {
+      font-size: 12px;
+      font-weight: 700;
+      fill: #334155;
+      paint-order: stroke;
+      stroke: #fff;
+      stroke-width: 4px;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+
+    .inspector {
+      grid-column: 2;
+      grid-row: 2 / 4;
+      border-left: 1px solid var(--border);
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      z-index: 15;
+      box-shadow: -4px 0 14px rgba(15,23,42,.04);
+    }
+
+    .inspector-head {
+      padding: 16px 18px 13px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .inspector-title { font-size: 16px; font-weight: 800; }
+    .inspector-sub { margin-top: 4px; font-size: 12px; color: var(--muted); }
+
+    .inspector-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px 17px 28px;
+    }
+
+    .empty-state {
+      padding: 34px 18px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .empty-icon {
+      width: 54px;
+      height: 54px;
+      margin: 0 auto 12px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      background: #eef2ff;
+      color: #4f46e5;
+      font-size: 25px;
+    }
+
+    .form-group { margin-bottom: 14px; }
+    .form-label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      font-weight: 750;
+      color: #475569;
+    }
+
+    .form-control {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 9px 10px;
+      outline: none;
+      background: #fff;
+      color: var(--text);
+      user-select: text;
+    }
+
+    .form-control:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(96,165,250,.15); }
+    textarea.form-control { min-height: 118px; resize: vertical; line-height: 1.5; }
+
+    .palette {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .swatch {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 9px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      box-shadow: inset 0 0 0 1px rgba(15,23,42,.11);
+    }
+
+    .swatch.selected { border-color: #111827; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #111827; }
+
+    .inline-row { display: flex; gap: 8px; align-items: center; }
+    .inline-row > * { flex: 1; }
+
+    .section-divider { height: 1px; background: var(--border); margin: 18px 0; }
+
+    .danger-btn {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid #fecaca;
+      border-radius: 9px;
+      background: #fff7f7;
+      color: var(--danger);
+      font-weight: 750;
+      cursor: pointer;
+    }
+
+    .statusbar {
+      position: absolute;
+      left: 12px;
+      bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 7px 10px;
+      border: 1px solid rgba(203,213,225,.9);
+      border-radius: 10px;
+      background: rgba(255,255,255,.88);
+      backdrop-filter: blur(8px);
+      color: #64748b;
+      font-size: 12px;
+      z-index: 10;
+      box-shadow: 0 3px 10px rgba(15,23,42,.05);
+    }
+
+    .mode-pill {
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      color: #334155;
+      font-weight: 700;
+    }
+
+    .mode-pill.connect { background: #ede9fe; color: #6d28d9; }
+
+    .context-menu {
+      position: fixed;
+      min-width: 170px;
+      padding: 6px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: #fff;
+      box-shadow: 0 14px 35px rgba(15,23,42,.20);
+      z-index: 100;
+      display: none;
+    }
+
+    .context-menu.show { display: block; }
+
+    .context-item {
+      width: 100%;
+      min-height: 36px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      text-align: left;
+      padding: 0 10px;
+      cursor: pointer;
+      color: var(--text);
+    }
+
+    .context-item:hover { background: #f1f5f9; }
+    .context-item.danger { color: var(--danger); }
+    .context-item.danger:hover { background: #fff1f2; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      top: 18px;
+      transform: translate(-50%, -14px);
+      padding: 10px 15px;
+      border-radius: 10px;
+      background: #111827;
+      color: #fff;
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 200;
+      transition: .2s ease;
+      box-shadow: 0 10px 25px rgba(15,23,42,.22);
+    }
+
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    .connection-banner {
+      position: absolute;
+      left: 50%;
+      top: 12px;
+      transform: translateX(-50%);
+      padding: 8px 13px;
+      border-radius: 10px;
+      background: #6d28d9;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      z-index: 11;
+      display: none;
+      box-shadow: 0 7px 17px rgba(109,40,217,.25);
+    }
+
+    .connection-banner.show { display: block; }
+
+    .help-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(15,23,42,.35);
+      z-index: 300;
+    }
+
+    .help-overlay.show { display: grid; }
+
+    .help-card {
+      width: min(620px, calc(100vw - 40px));
+      max-height: calc(100vh - 60px);
+      overflow-y: auto;
+      padding: 24px;
+      border-radius: 18px;
+      background: #fff;
+      box-shadow: 0 25px 60px rgba(15,23,42,.28);
+    }
+
+    .help-card h2 { margin: 0 0 14px; }
+    .help-card p, .help-card li { line-height: 1.65; color: #475569; font-size: 14px; }
+    .help-card ul { padding-left: 20px; }
+
+    .kbd {
+      display: inline-block;
+      min-width: 25px;
+      padding: 2px 6px;
+      border: 1px solid #cbd5e1;
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      background: #f8fafc;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #475569;
+    }
+
+    @media (max-width: 980px) {
+      :root { --inspector-w: 280px; }
+      .tool-btn .label { display: none; }
+      .tool-btn { width: 38px; padding: 0; }
+      .brand span:last-child { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="toolbar">
+      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">PAGE FIX v6</span></div>
+      <button id="addNodeBtn" class="tool-btn" title="화면 중앙에 새 노드 생성 (N)"><span>＋</span><span class="label">노드</span></button>
+      <button id="addImageNodeBtn" class="tool-btn" title="이미지를 노드로 추가"><span>🖼</span><span class="label">이미지</span></button>
+      <input id="imageInput" type="file" accept="image/*" hidden />
+      <button id="connectBtn" class="tool-btn" title="화살표 연결 모드 (C)"><span>↗</span><span class="label">화살표</span></button>
+      <div class="toolbar-sep"></div>
+      <button id="saveBtn" class="tool-btn" title="파일로 저장"><span>💾</span><span class="label">저장</span></button>
+      <button id="loadBtn" class="tool-btn" title="파일 불러오기"><span>📂</span><span class="label">불러오기</span></button>
+      <input id="fileInput" type="file" accept="application/json,.json" hidden />
+      <div class="toolbar-sep"></div>
+      <button id="undoBtn" class="tool-btn icon-only" title="실행 취소 (Ctrl+Z)">↶</button>
+      <button id="redoBtn" class="tool-btn icon-only" title="다시 실행 (Ctrl+Y)">↷</button>
+      <div class="toolbar-spacer"></div>
+      <button id="zoomOutBtn" class="tool-btn icon-only" title="축소">−</button>
+      <div id="zoomLabel" class="zoom-label">100%</div>
+      <button id="zoomInBtn" class="tool-btn icon-only" title="확대">＋</button>
+      <button id="fitBtn" class="tool-btn icon-only" title="전체 보기">⊡</button>
+      <button id="helpBtn" class="tool-btn icon-only" title="사용법">?</button>
+    </header>
+
+    <nav id="tabs" class="tabs"></nav>
+
+    <main class="viewport-wrap">
+      <div id="viewport">
+        <div id="world">
+          <svg id="edgeSvg" viewBox="0 0 12000 8000" aria-label="화살표 영역">
+            <defs>
+              <marker id="arrow-default" markerWidth="5" markerHeight="5" refX="4.5" refY="1.5" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,3 L4.5,1.5 z" fill="context-stroke"></path>
+              </marker>
+            </defs>
+          </svg>
+          <div id="nodesLayer"></div>
+        </div>
+      </div>
+      <div id="connectionBanner" class="connection-banner">연결할 시작 노드를 선택하세요</div>
+      <div class="statusbar">
+        <span id="statusMode" class="mode-pill">선택</span>
+        <span id="statusInfo">노드 선택 후 우하단 손잡이: 크기 변경 · 배경 드래그: 화면 이동 · 휠: 확대/축소</span>
+      </div>
+    </main>
+
+    <aside class="inspector">
+      <div class="inspector-head">
+        <div id="inspectorTitle" class="inspector-title">정보 및 세부 내역</div>
+        <div id="inspectorSub" class="inspector-sub">노드나 화살표를 선택하세요.</div>
+      </div>
+      <div id="inspectorBody" class="inspector-body"></div>
+    </aside>
+  </div>
+
+  <div id="contextMenu" class="context-menu"></div>
+  <div id="toast" class="toast"></div>
+
+  <div id="helpOverlay" class="help-overlay">
+    <div class="help-card">
+      <h2>MindMap Studio 사용법</h2>
+      <ul>
+        <li><b>노드 생성:</b> 상단의 ‘노드’ 버튼 또는 <span class="kbd">N</span>. 현재 보이는 화면 중앙에 생성됩니다.</li>
+        <li><b>이미지 노드:</b> 상단의 ‘이미지’ 버튼으로 사진을 불러오면 화면 중앙에 이미지 노드가 생성됩니다. 이미지 전체가 잘리지 않도록 노드 안에 자동 맞춤됩니다.</li>
+        <li><b>이름 변경:</b> 일반 노드는 제목을 더블클릭해 입력하고, 이미지 노드는 더블클릭 후 이름을 입력합니다.</li>
+        <li><b>노드 이동:</b> 노드를 마우스로 끌어 이동합니다.</li>
+        <li><b>크기 변경:</b> 노드를 선택한 뒤 오른쪽 아래의 파란 손잡이를 드래그합니다. 일반 노드와 이미지 노드 모두 가로·세로를 자유롭게 조절할 수 있습니다.</li>
+        <li><b>화살표 생성:</b> ‘화살표’ 버튼 → 시작 노드 → 도착 노드 순서로 클릭합니다.</li>
+        <li><b>상세 정보:</b> 노드를 선택한 뒤 오른쪽에서 설명, 담당자, 상태, 날짜, 태그 등을 입력합니다.</li>
+        <li><b>삭제:</b> 노드 또는 화살표를 우클릭하고 ‘삭제’를 선택합니다. 선택 후 <span class="kbd">Delete</span>도 가능합니다.</li>
+        <li><b>프로젝트 페이지:</b> 상단 탭의 + 버튼으로 페이지를 추가합니다. 탭을 더블클릭하면 프로젝트 이름을 바꿀 수 있습니다.</li>
+        <li><b>교차선 회피:</b> 화살표 교차 부분은 자동으로 점프 모양으로 표시됩니다.</li>
+        <li><b>이동/확대:</b> 빈 배경을 드래그해 이동하고 마우스 휠로 확대/축소합니다.</li>
+        <li><b>저장:</b> 브라우저에 자동 저장되며, ‘저장’ 버튼으로 JSON 파일을 내려받을 수 있습니다.</li>
+      </ul>
+      <button id="closeHelpBtn" class="tool-btn" style="width:100%; margin-top:10px;">닫기</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  const WORLD_W = 12000;
+  const WORLD_H = 8000;
+  const NODE_W = 184;
+  const NODE_H = 76;
+  const IMAGE_NODE_SIZE = 184;
+  const MIN_TEXT_W = 100;
+  const MIN_TEXT_H = 56;
+  const MIN_IMAGE_SIZE = 80;
+  const MAX_NODE_SIZE = 1600;
+  const DEFAULT_FONT_SIZE = 16;
+  const MIN_FONT_SIZE = 10;
+  const MAX_FONT_SIZE = 72;
+  const AUTO_FIT_MAX_WIDTH = 520;
+  const STORAGE_KEY = 'mindmap-studio-v1';
+  const PALETTE = ['#fff3bf','#ffd8a8','#ffc9c9','#d3f9d8','#c5f6fa','#d0ebff','#e5dbff','#f3d9fa','#e9ecef','#ffffff','#dbeafe','#dcfce7'];
+
+  const el = id => document.getElementById(id);
+  const viewport = el('viewport');
+  const world = el('world');
+  const edgeSvg = el('edgeSvg');
+  const nodesLayer = el('nodesLayer');
+  const tabsEl = el('tabs');
+  const inspectorBody = el('inspectorBody');
+  const inspectorTitle = el('inspectorTitle');
+  const inspectorSub = el('inspectorSub');
+  const contextMenu = el('contextMenu');
+  const toast = el('toast');
+  const connectionBanner = el('connectionBanner');
+
+  let app = loadLocal() || createInitialState();
+  let selection = null; // {type:'node'|'edge', id}
+  let connectMode = false;
+  let connectSourceId = null;
+  let dragState = null;
+  let resizeState = null;
+  let panState = null;
+  let contextTarget = null;
+  let history = [];
+  let historyIndex = -1;
+  let historyLock = false;
+  let saveTimer = null;
+  let imageInputMode = 'create';
+  let imageReplaceNodeId = null;
+  // renderAll() 안에서 즉시 사용되므로 첫 렌더링 전에 초기화해야 합니다.
+  let textAutoFitFrame = null;
+
+  ensureState();
+  pushHistory(true);
+  renderAll();
+
+  function createInitialState() {
+    const projectId = uid('p');
+    return {
+      version: 1,
+      activeProjectId: projectId,
+      projects: [{
+        id: projectId,
+        name: '프로젝트 1',
+        nodes: [],
+        edges: [],
+        view: { panX: 0, panY: 0, zoom: 1, initialized: false }
+      }]
+    };
+  }
+
+  function ensureState() {
+    if (!app || !Array.isArray(app.projects) || app.projects.length === 0) app = createInitialState();
+    app.projects.forEach((p, i) => {
+      p.id ||= uid('p');
+      p.name ||= `프로젝트 ${i + 1}`;
+      p.nodes ||= [];
+      p.edges ||= [];
+      p.view ||= { panX: 0, panY: 0, zoom: 1, initialized: false };
+      p.nodes.forEach(n => {
+        n.id ||= uid('n');
+        n.title ||= '새 노드';
+        n.x = Number.isFinite(n.x) ? n.x : WORLD_W/2;
+        n.y = Number.isFinite(n.y) ? n.y : WORLD_H/2;
+        n.color ||= PALETTE[0];
+        n.description ||= '';
+        n.owner ||= '';
+        n.status ||= '미정';
+        n.dueDate ||= '';
+        n.tags ||= '';
+        n.link ||= '';
+        n.type = n.type === 'image' ? 'image' : 'text';
+        n.imageData ||= '';
+        n.imageName ||= '';
+        n.fontSize = clamp(Number.isFinite(n.fontSize) ? n.fontSize : DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE);
+        if (n.type === 'image') {
+          n.width = clamp(Number.isFinite(n.width) ? n.width : IMAGE_NODE_SIZE, MIN_IMAGE_SIZE, MAX_NODE_SIZE);
+          n.height = clamp(Number.isFinite(n.height) ? n.height : IMAGE_NODE_SIZE, MIN_IMAGE_SIZE, MAX_NODE_SIZE);
+        } else {
+          n.width = clamp(Number.isFinite(n.width) ? n.width : NODE_W, MIN_TEXT_W, MAX_NODE_SIZE);
+          n.height = clamp(Number.isFinite(n.height) ? n.height : NODE_H, MIN_TEXT_H, MAX_NODE_SIZE);
+        }
+      });
+      p.edges.forEach(e => {
+        e.id ||= uid('e');
+        e.label ||= '';
+        e.color ||= '#64748b';
+        e.dashed = !!e.dashed;
+        e.projectId = p.id;
+      });
+      // 각 프로젝트 페이지의 노드와 화살표는 완전히 독립적으로 유지합니다.
+      // 현재 페이지에 없는 노드를 가리키는 연결선은 불러오기 과정에서도 제거합니다.
+      const nodeIds = new Set(p.nodes.map(n => n.id));
+      p.edges = p.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+      p.nodes.forEach(n => { n.projectId = p.id; });
+    });
+    if (!app.projects.some(p => p.id === app.activeProjectId)) app.activeProjectId = app.projects[0].id;
+  }
+
+  function uid(prefix) {
+    return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
+  }
+
+  function project() { return app.projects.find(p => p.id === app.activeProjectId); }
+  function getNode(id) { return project().nodes.find(n => n.id === id); }
+  function getEdge(id) { return project().edges.find(e => e.id === id); }
+  function nodeSize(node) {
+    if (!node) return { width: NODE_W, height: NODE_H };
+    if (node.type === 'image') {
+      return {
+        width: clamp(Number.isFinite(node.width) ? node.width : IMAGE_NODE_SIZE, MIN_IMAGE_SIZE, MAX_NODE_SIZE),
+        height: clamp(Number.isFinite(node.height) ? node.height : IMAGE_NODE_SIZE, MIN_IMAGE_SIZE, MAX_NODE_SIZE)
+      };
+    }
+    return {
+      width: clamp(Number.isFinite(node.width) ? node.width : NODE_W, MIN_TEXT_W, MAX_NODE_SIZE),
+      height: clamp(Number.isFinite(node.height) ? node.height : NODE_H, MIN_TEXT_H, MAX_NODE_SIZE)
+    };
+  }
+
+  function initViewIfNeeded() {
+    const p = project();
+    if (!p.view.initialized) {
+      const r = viewport.getBoundingClientRect();
+      p.view.panX = r.width / 2 - WORLD_W / 2;
+      p.view.panY = r.height / 2 - WORLD_H / 2;
+      p.view.zoom = 1;
+      p.view.initialized = true;
+    }
+  }
+
+  function renderAll() {
+    initViewIfNeeded();
+    renderTabs();
+    applyTransform();
+    renderNodes();
+    renderEdges();
+    renderInspector();
+    updateModeUI();
+    updateUndoRedo();
+  }
+
+  function renderTabs() {
+    tabsEl.innerHTML = '';
+    app.projects.forEach(p => {
+      const tab = document.createElement('div');
+      tab.className = `tab${p.id === app.activeProjectId ? ' active' : ''}`;
+      tab.dataset.id = p.id;
+      tab.innerHTML = `<span class="tab-title"></span><span class="tab-close" title="프로젝트 삭제">×</span>`;
+      tab.querySelector('.tab-title').textContent = p.name;
+
+      tab.addEventListener('click', e => {
+        if (e.target.closest('.tab-close')) return;
+        if (app.activeProjectId !== p.id) {
+          app.activeProjectId = p.id;
+          selection = null;
+          cancelConnectMode();
+          cancelAnimationFrame(textAutoFitFrame);
+          textAutoFitFrame = null;
+          nodesLayer.innerHTML = '';
+          edgeSvg.querySelectorAll('.edge-group').forEach(x => x.remove());
+          renderAll();
+          scheduleSave(false);
+        }
+      });
+
+      tab.addEventListener('dblclick', e => {
+        if (e.target.closest('.tab-close')) return;
+        const name = prompt('프로젝트 이름을 입력하세요.', p.name);
+        if (name && name.trim()) {
+          checkpoint();
+          p.name = name.trim();
+          renderTabs();
+          scheduleSave();
+        }
+      });
+
+      tab.querySelector('.tab-close').addEventListener('click', e => {
+        e.stopPropagation();
+        removeProject(p.id);
+      });
+      tabsEl.appendChild(tab);
+    });
+
+    const add = document.createElement('button');
+    add.className = 'add-tab';
+    add.title = '새 프로젝트 페이지';
+    add.textContent = '+';
+    add.addEventListener('click', addProject);
+    tabsEl.appendChild(add);
+  }
+
+  function addProject() {
+    checkpoint();
+    const id = uid('p');
+    const r = viewport.getBoundingClientRect();
+    const number = app.projects.length + 1;
+    app.projects.push({
+      id,
+      name: `프로젝트 ${number}`,
+      nodes: [],
+      edges: [],
+      view: { panX: r.width/2 - WORLD_W/2, panY: r.height/2 - WORLD_H/2, zoom: 1, initialized: true }
+    });
+    app.activeProjectId = id;
+    selection = null;
+    cancelConnectMode();
+    renderAll();
+    scheduleSave();
+    showToast('새 프로젝트 페이지를 만들었습니다.');
+  }
+
+  function removeProject(id) {
+    const p = app.projects.find(x => x.id === id);
+    if (!p) return;
+    if (app.projects.length === 1) {
+      showToast('프로젝트는 최소 1개가 필요합니다.');
+      return;
+    }
+    if (!confirm(`“${p.name}” 프로젝트를 삭제할까요?`)) return;
+    checkpoint();
+    app.projects = app.projects.filter(x => x.id !== id);
+    if (app.activeProjectId === id) app.activeProjectId = app.projects[0].id;
+    selection = null;
+    cancelConnectMode();
+    renderAll();
+    scheduleSave();
+  }
+
+  function applyTransform() {
+    const v = project().view;
+    world.style.transform = `translate(${v.panX}px, ${v.panY}px) scale(${v.zoom})`;
+    el('zoomLabel').textContent = `${Math.round(v.zoom * 100)}%`;
+    viewport.style.backgroundPosition = `${v.panX % (24*v.zoom)}px ${v.panY % (24*v.zoom)}px`;
+    viewport.style.backgroundSize = `${24*v.zoom}px ${24*v.zoom}px`;
+  }
+
+  function renderNodes() {
+    nodesLayer.innerHTML = '';
+    const activeId = project().id;
+    project().nodes.filter(node => !node.projectId || node.projectId === activeId).forEach(node => {
+      const div = document.createElement('div');
+      div.className = `node${node.type === 'image' ? ' image-node' : ''}`;
+      if (selection?.type === 'node' && selection.id === node.id) div.classList.add('selected');
+      if (connectSourceId === node.id) div.classList.add('connection-source');
+      div.dataset.id = node.id;
+      div.style.left = `${node.x}px`;
+      div.style.top = `${node.y}px`;
+      const size = nodeSize(node);
+      div.style.width = `${size.width}px`;
+      div.style.height = `${size.height}px`;
+
+      if (node.type === 'image') {
+        div.style.background = node.color || '#ffffff';
+        div.innerHTML = `
+          <img class="node-image" alt="" draggable="false">
+          <div class="node-image-title"></div>
+        `;
+        const img = div.querySelector('.node-image');
+        img.src = node.imageData || '';
+        img.alt = node.title || '이미지 노드';
+        const imageTitle = div.querySelector('.node-image-title');
+        imageTitle.textContent = node.title || '이미지 노드';
+        imageTitle.style.fontSize = `${node.fontSize || DEFAULT_FONT_SIZE}px`;
+      } else {
+        div.style.background = node.color;
+        div.innerHTML = `
+          <div class="node-title" title="더블클릭하여 이름 변경"></div>
+          <div class="node-meta"></div>
+        `;
+        const title = div.querySelector('.node-title');
+        title.textContent = node.title;
+        title.style.fontSize = `${node.fontSize || DEFAULT_FONT_SIZE}px`;
+        renderNodeMeta(div.querySelector('.node-meta'), node);
+      }
+
+      const resizeHandle = document.createElement('div');
+      resizeHandle.className = 'resize-handle';
+      resizeHandle.title = node.type === 'image'
+        ? '드래그하여 이미지 노드 크기 변경'
+        : '드래그하여 노드 크기 변경';
+      resizeHandle.setAttribute('role', 'button');
+      resizeHandle.setAttribute('aria-label', '노드 크기 변경');
+      resizeHandle.addEventListener('mousedown', e => onNodeResizeStart(e, node.id));
+      div.appendChild(resizeHandle);
+
+      div.addEventListener('mousedown', e => onNodeMouseDown(e, node.id));
+      div.addEventListener('click', e => onNodeClick(e, node.id));
+      div.addEventListener('dblclick', e => startInlineRename(e, node.id));
+      div.addEventListener('contextmenu', e => showContextMenu(e, {type:'node', id:node.id}));
+      nodesLayer.appendChild(div);
+    });
+    scheduleTextAutoFit();
+  }
+
+  function scheduleTextAutoFit() {
+    cancelAnimationFrame(textAutoFitFrame);
+    textAutoFitFrame = requestAnimationFrame(() => {
+      textAutoFitFrame = null;
+      if (resizeState) return;
+      let changed = false;
+      project().nodes.forEach(node => {
+        if (node.type !== 'text') return;
+        const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(node.id)}"]`);
+        if (fitTextNodeToContent(node, div)) changed = true;
+      });
+      if (changed) {
+        renderEdges();
+        if (selection?.type === 'node') updateNodeSizeReadout();
+        scheduleSave(false);
+      }
+    });
+  }
+
+  function nodeMetaValues(node) {
+    const values = [];
+    if (node.status && node.status !== '미정') values.push(node.status);
+    if (node.owner) values.push(node.owner);
+    if (node.dueDate) values.push(node.dueDate);
+    return values.slice(0, 2);
+  }
+
+  function measureTextWidth(text, element, fallbackSize) {
+    const canvas = measureTextWidth.canvas || (measureTextWidth.canvas = document.createElement('canvas'));
+    const ctx = canvas.getContext('2d');
+    const style = element ? getComputedStyle(element) : null;
+    const fontSize = style?.fontSize || `${fallbackSize}px`;
+    const fontFamily = style?.fontFamily || getComputedStyle(document.body).fontFamily;
+    const fontWeight = style?.fontWeight || '800';
+    ctx.font = `${fontWeight} ${fontSize} ${fontFamily}`;
+    const lines = String(text || '').split(/\r?\n/);
+    return Math.max(0, ...lines.map(line => ctx.measureText(line || ' ').width));
+  }
+
+  function fitTextNodeToContent(node, div = null) {
+    if (!node || node.type !== 'text') return false;
+    div ||= nodesLayer.querySelector(`.node[data-id="${cssEscape(node.id)}"]`);
+    if (!div) return false;
+    const title = div.querySelector('.node-title');
+    const meta = div.querySelector('.node-meta');
+    if (!title) return false;
+
+    const current = nodeSize(node);
+    const titleNaturalWidth = measureTextWidth(node.title || ' ', title, node.fontSize || DEFAULT_FONT_SIZE);
+    const chips = meta ? [...meta.children] : [];
+    const metaNaturalWidth = chips.length
+      ? chips.reduce((sum, chip) => sum + chip.offsetWidth, 0) + Math.max(0, chips.length - 1) * 5
+      : 0;
+    const horizontalChrome = 32;
+    const verticalChrome = 28;
+    const maxAllowedWidth = Math.max(MIN_TEXT_W, Math.min(AUTO_FIT_MAX_WIDTH, MAX_NODE_SIZE, WORLD_W - node.x));
+    let targetWidth = Math.max(current.width, Math.ceil(Math.max(titleNaturalWidth, metaNaturalWidth) + horizontalChrome));
+    targetWidth = clamp(targetWidth, MIN_TEXT_W, Math.max(current.width, maxAllowedWidth));
+
+    div.style.width = `${targetWidth}px`;
+    const titleHeight = Math.ceil(title.scrollHeight);
+    const metaHeight = meta && chips.length ? Math.ceil(meta.scrollHeight) + 6 : 0;
+    const neededHeight = titleHeight + metaHeight + verticalChrome;
+    const maxAllowedHeight = Math.max(MIN_TEXT_H, Math.min(MAX_NODE_SIZE, WORLD_H - node.y));
+    const targetHeight = clamp(Math.max(current.height, neededHeight), MIN_TEXT_H, Math.max(current.height, maxAllowedHeight));
+
+    const changed = Math.abs(targetWidth - current.width) > .5 || Math.abs(targetHeight - current.height) > .5;
+    if (changed) {
+      node.width = targetWidth;
+      node.height = targetHeight;
+      div.style.width = `${targetWidth}px`;
+      div.style.height = `${targetHeight}px`;
+    }
+    return changed;
+  }
+
+  function updateNodeSizeReadout() {
+    if (selection?.type !== 'node') return;
+    const node = getNode(selection.id);
+    const readout = el('nodeSizeReadout');
+    if (node && readout) readout.textContent = `${Math.round(nodeSize(node).width)} × ${Math.round(nodeSize(node).height)} px`;
+  }
+
+  function renderNodeMeta(container, node) {
+    container.innerHTML = '';
+    const values = nodeMetaValues(node);
+    values.forEach(v => {
+      const span = document.createElement('span');
+      span.className = 'chip';
+      span.textContent = v;
+      container.appendChild(span);
+    });
+  }
+
+  function startInlineRename(e, nodeId) {
+    e.stopPropagation();
+    cancelConnectMode();
+    const node = getNode(nodeId);
+    if (!node) return;
+
+    if (node.type === 'image') {
+      const value = prompt('이미지 노드 이름을 입력하세요.', node.title || '이미지 노드');
+      if (value !== null && value.trim()) {
+        checkpoint();
+        node.title = value.trim();
+        renderNodes();
+        renderEdges();
+        renderInspector();
+        scheduleSave();
+      }
+      return;
+    }
+
+    const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(nodeId)}"]`);
+    const title = div?.querySelector('.node-title');
+    if (!title) return;
+    checkpoint();
+    title.contentEditable = 'true';
+    title.focus();
+    selectText(title);
+
+    title.addEventListener('input', () => {
+      node.title = title.textContent.trim() || '이름 없음';
+      if (fitTextNodeToContent(node, div)) renderEdges();
+      updateNodeSizeReadout();
+      scheduleSave(false);
+    });
+
+    const finish = () => {
+      title.contentEditable = 'false';
+      const value = title.textContent.trim() || '이름 없음';
+      node.title = value;
+      renderInspector();
+      renderNodes();
+      renderEdges();
+      scheduleSave();
+    };
+
+    title.addEventListener('blur', finish, {once:true});
+    title.addEventListener('keydown', evt => {
+      if (evt.key === 'Enter') { evt.preventDefault(); title.blur(); }
+      if (evt.key === 'Escape') { evt.preventDefault(); title.textContent = node.title; title.blur(); }
+    });
+  }
+
+  function selectText(element) {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function onNodeClick(e, nodeId) {
+    e.stopPropagation();
+    if (dragState?.moved || resizeState?.moved) return;
+
+    if (connectMode) {
+      if (!connectSourceId) {
+        connectSourceId = nodeId;
+        connectionBanner.textContent = '연결할 도착 노드를 선택하세요';
+        renderNodes();
+      } else if (connectSourceId !== nodeId) {
+        const exists = project().edges.some(ed => ed.source === connectSourceId && ed.target === nodeId);
+        if (exists) {
+          showToast('같은 방향의 화살표가 이미 있습니다.');
+          connectSourceId = null;
+          connectionBanner.textContent = '연결할 시작 노드를 선택하세요';
+          renderNodes();
+          return;
+        }
+        checkpoint();
+        const edge = { id: uid('e'), projectId: project().id, source: connectSourceId, target: nodeId, label: '', color: '#64748b', dashed: false };
+        project().edges.push(edge);
+        selection = {type:'edge', id:edge.id};
+        connectSourceId = null;
+        connectionBanner.textContent = '연결할 시작 노드를 선택하세요';
+        renderAll();
+        scheduleSave();
+        showToast('화살표를 생성했습니다.');
+      }
+      return;
+    }
+
+    selection = {type:'node', id:nodeId};
+    renderNodes();
+    renderEdges();
+    renderInspector();
+  }
+
+  function onNodeResizeStart(e, nodeId) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    cancelConnectMode();
+    const node = getNode(nodeId);
+    if (!node) return;
+    const size = nodeSize(node);
+    const v = project().view;
+    selection = {type:'node', id:nodeId};
+    nodesLayer.querySelectorAll('.node.selected').forEach(x => x.classList.remove('selected'));
+    nodesLayer.querySelector(`.node[data-id="${cssEscape(nodeId)}"]`)?.classList.add('selected');
+    renderEdges();
+    renderInspector();
+    resizeState = {
+      nodeId,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startWidth: size.width,
+      startHeight: size.height,
+      moved: false,
+      checkpointed: false,
+      zoom: v.zoom
+    };
+    window.addEventListener('mousemove', onNodeResizeMove);
+    window.addEventListener('mouseup', onNodeResizeEnd, {once:true});
+  }
+
+  function onNodeResizeMove(e) {
+    if (!resizeState) return;
+    const node = getNode(resizeState.nodeId);
+    if (!node) return;
+    const dx = (e.clientX - resizeState.startMouseX) / resizeState.zoom;
+    const dy = (e.clientY - resizeState.startMouseY) / resizeState.zoom;
+    if (Math.hypot(dx, dy) > 1.5) resizeState.moved = true;
+    if (!resizeState.moved) return;
+    if (!resizeState.checkpointed) {
+      checkpoint();
+      resizeState.checkpointed = true;
+    }
+
+    if (node.type === 'image') {
+      node.width = clamp(resizeState.startWidth + dx, MIN_IMAGE_SIZE, Math.min(MAX_NODE_SIZE, WORLD_W - node.x));
+      node.height = clamp(resizeState.startHeight + dy, MIN_IMAGE_SIZE, Math.min(MAX_NODE_SIZE, WORLD_H - node.y));
+    } else {
+      node.width = clamp(resizeState.startWidth + dx, MIN_TEXT_W, Math.min(MAX_NODE_SIZE, WORLD_W - node.x));
+      node.height = clamp(resizeState.startHeight + dy, MIN_TEXT_H, Math.min(MAX_NODE_SIZE, WORLD_H - node.y));
+    }
+
+    const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(node.id)}"]`);
+    if (div) {
+      div.style.width = `${node.width}px`;
+      div.style.height = `${node.height}px`;
+    }
+    renderEdges();
+  }
+
+  function onNodeResizeEnd() {
+    if (resizeState?.moved) {
+      selection = {type:'node', id:resizeState.nodeId};
+      const node = getNode(resizeState.nodeId);
+      const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(resizeState.nodeId)}"]`);
+      if (fitTextNodeToContent(node, div)) renderEdges();
+      scheduleSave();
+      renderInspector();
+    }
+    setTimeout(() => { resizeState = null; }, 0);
+    window.removeEventListener('mousemove', onNodeResizeMove);
+  }
+
+  function onNodeMouseDown(e, nodeId) {
+    if (e.button !== 0 || e.target.isContentEditable) return;
+    e.stopPropagation();
+    const node = getNode(nodeId);
+    if (!node) return;
+    const v = project().view;
+    dragState = {
+      nodeId,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startX: node.x,
+      startY: node.y,
+      moved: false,
+      checkpointed: false,
+      zoom: v.zoom
+    };
+    window.addEventListener('mousemove', onNodeMouseMove);
+    window.addEventListener('mouseup', onNodeMouseUp, {once:true});
+  }
+
+  function onNodeMouseMove(e) {
+    if (!dragState) return;
+    const dx = (e.clientX - dragState.startMouseX) / dragState.zoom;
+    const dy = (e.clientY - dragState.startMouseY) / dragState.zoom;
+    if (Math.hypot(dx,dy) > 2) dragState.moved = true;
+    if (!dragState.moved) return;
+    if (!dragState.checkpointed) {
+      checkpoint();
+      dragState.checkpointed = true;
+    }
+    const node = getNode(dragState.nodeId);
+    if (!node) return;
+    const size = nodeSize(node);
+    node.x = clamp(dragState.startX + dx, 0, WORLD_W - size.width);
+    node.y = clamp(dragState.startY + dy, 0, WORLD_H - size.height);
+    const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(node.id)}"]`);
+    if (div) {
+      div.style.left = `${node.x}px`;
+      div.style.top = `${node.y}px`;
+    }
+    renderEdges();
+  }
+
+  function onNodeMouseUp() {
+    if (dragState?.moved) {
+      selection = {type:'node', id:dragState.nodeId};
+      scheduleSave();
+      renderInspector();
+    }
+    setTimeout(() => { dragState = null; }, 0);
+    window.removeEventListener('mousemove', onNodeMouseMove);
+  }
+
+  function addNode() {
+    const p = project();
+    const r = viewport.getBoundingClientRect();
+    const v = p.view;
+    const worldCenterX = (r.width / 2 - v.panX) / v.zoom;
+    const worldCenterY = (r.height / 2 - v.panY) / v.zoom;
+    checkpoint();
+    const node = {
+      id: uid('n'),
+      projectId: p.id,
+      title: '새 노드',
+      x: clamp(worldCenterX - NODE_W/2, 0, WORLD_W - NODE_W),
+      y: clamp(worldCenterY - NODE_H/2, 0, WORLD_H - NODE_H),
+      width: NODE_W,
+      height: NODE_H,
+      type: 'text',
+      imageData: '',
+      imageName: '',
+      fontSize: DEFAULT_FONT_SIZE,
+      color: PALETTE[p.nodes.length % PALETTE.length],
+      description: '', owner: '', status: '미정', dueDate: '', tags: '', link: ''
+    };
+    p.nodes.push(node);
+    selection = {type:'node', id:node.id};
+    cancelConnectMode();
+    renderAll();
+    scheduleSave();
+    showToast('새 노드를 생성했습니다.');
+    requestAnimationFrame(() => {
+      const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(node.id)}"]`);
+      div?.dispatchEvent(new MouseEvent('dblclick', {bubbles:true}));
+    });
+  }
+
+
+  function openImagePicker(mode='create', nodeId=null) {
+    imageInputMode = mode;
+    imageReplaceNodeId = nodeId;
+    const input = el('imageInput');
+    input.value = '';
+    input.click();
+  }
+
+  async function handleImageFile(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('이미지 파일을 선택하세요.');
+      return;
+    }
+    try {
+      const imageData = await compressImageFile(file);
+      if (imageInputMode === 'replace' && imageReplaceNodeId) {
+        const node = getNode(imageReplaceNodeId);
+        if (!node) return;
+        checkpoint();
+        node.type = 'image';
+        node.width = clamp(Number.isFinite(node.width) ? node.width : IMAGE_NODE_SIZE, MIN_IMAGE_SIZE, MAX_NODE_SIZE);
+        node.height = clamp(Number.isFinite(node.height) ? node.height : IMAGE_NODE_SIZE, MIN_IMAGE_SIZE, MAX_NODE_SIZE);
+        node.imageData = imageData;
+        node.imageName = file.name;
+        if (!node.title || node.title === '새 노드') node.title = file.name.replace(/\.[^.]+$/, '') || '이미지 노드';
+        selection = {type:'node', id:node.id};
+        renderAll();
+        scheduleSave();
+        showToast('이미지를 교체했습니다.');
+      } else {
+        addImageNode(imageData, file.name);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('이미지를 불러오지 못했습니다.');
+    } finally {
+      imageInputMode = 'create';
+      imageReplaceNodeId = null;
+      el('imageInput').value = '';
+    }
+  }
+
+  function addImageNode(imageData, fileName='') {
+    const p = project();
+    const r = viewport.getBoundingClientRect();
+    const v = p.view;
+    const worldCenterX = (r.width / 2 - v.panX) / v.zoom;
+    const worldCenterY = (r.height / 2 - v.panY) / v.zoom;
+    checkpoint();
+    const baseTitle = fileName.replace(/\.[^.]+$/, '').trim() || '이미지 노드';
+    const node = {
+      id: uid('n'),
+      projectId: p.id,
+      type: 'image',
+      imageData,
+      imageName: fileName,
+      title: baseTitle,
+      x: clamp(worldCenterX - IMAGE_NODE_SIZE/2, 0, WORLD_W - IMAGE_NODE_SIZE),
+      y: clamp(worldCenterY - IMAGE_NODE_SIZE/2, 0, WORLD_H - IMAGE_NODE_SIZE),
+      width: IMAGE_NODE_SIZE,
+      height: IMAGE_NODE_SIZE,
+      fontSize: DEFAULT_FONT_SIZE,
+      color: '#ffffff',
+      description: '', owner: '', status: '미정', dueDate: '', tags: '', link: ''
+    };
+    p.nodes.push(node);
+    selection = {type:'node', id:node.id};
+    cancelConnectMode();
+    renderAll();
+    scheduleSave();
+    showToast('이미지 노드를 생성했습니다.');
+  }
+
+  function compressImageFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('파일 읽기 실패'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('이미지 해석 실패'));
+        img.onload = () => {
+          const maxSide = 900;
+          const ratio = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+          const width = Math.max(1, Math.round(img.naturalWidth * ratio));
+          const height = Math.max(1, Math.round(img.naturalHeight * ratio));
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/webp', 0.8));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderEdges() {
+    edgeSvg.querySelectorAll('.edge-group').forEach(x => x.remove());
+    const activeId = project().id;
+    const routes = project().edges
+      .filter(edge => !edge.projectId || edge.projectId === activeId)
+      .map((edge, index) => ({edge, points: routeEdge(edge, index)}));
+    const crossings = calculateCrossings(routes);
+
+    routes.forEach(({edge, points}, routeIndex) => {
+      const group = svgEl('g', {class:'edge-group', 'data-id': edge.id});
+      const d = buildPathWithJumps(points, crossings.get(edge.id) || []);
+      const visible = svgEl('path', {
+        d,
+        class: `edge-visible${selection?.type === 'edge' && selection.id === edge.id ? ' selected' : ''}`,
+        stroke: edge.color || '#64748b',
+        'marker-end': 'url(#arrow-default)'
+      });
+      if (edge.dashed) visible.setAttribute('stroke-dasharray', '9 7');
+
+      const hit = svgEl('path', {d, class:'edge-hit'});
+      hit.addEventListener('click', evt => {
+        evt.stopPropagation();
+        selection = {type:'edge', id:edge.id};
+        cancelConnectMode();
+        renderEdges();
+        renderNodes();
+        renderInspector();
+      });
+      hit.addEventListener('contextmenu', evt => showContextMenu(evt, {type:'edge', id:edge.id}));
+
+      group.appendChild(visible);
+      group.appendChild(hit);
+
+      if (edge.label) {
+        const mid = pathMidPoint(points);
+        const text = svgEl('text', {x:mid.x, y:mid.y - 8, class:'edge-label', 'text-anchor':'middle'});
+        text.textContent = edge.label;
+        group.appendChild(text);
+      }
+      edgeSvg.appendChild(group);
+    });
+  }
+
+  function routeEdge(edge, index) {
+    const s = getNode(edge.source);
+    const t = getNode(edge.target);
+    if (!s || !t) return [];
+    const ss = nodeSize(s);
+    const ts = nodeSize(t);
+    const sc = {x:s.x + ss.width/2, y:s.y + ss.height/2};
+    const tc = {x:t.x + ts.width/2, y:t.y + ts.height/2};
+    const dx = tc.x - sc.x;
+    const dy = tc.y - sc.y;
+    const lane = ((((index * 37) % 7) - 3) || 1) * 11;
+
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      const dir = dx >= 0 ? 1 : -1;
+      const start = {x:sc.x + dir * ss.width/2, y:sc.y};
+      const end = {x:tc.x - dir * ts.width/2, y:tc.y};
+      if (Math.abs(start.y - end.y) < 4) {
+        const stub = 38 * dir;
+        const yLane = start.y + (lane === 0 ? 28 : lane * 1.5);
+        return compactPoints([
+          start,
+          {x:start.x + stub, y:start.y},
+          {x:start.x + stub, y:yLane},
+          {x:end.x - stub, y:yLane},
+          {x:end.x - stub, y:end.y},
+          end
+        ]);
+      }
+      const midX = (start.x + end.x) / 2 + lane;
+      return compactPoints([start, {x:midX,y:start.y}, {x:midX,y:end.y}, end]);
+    }
+
+    const dir = dy >= 0 ? 1 : -1;
+    const start = {x:sc.x, y:sc.y + dir * ss.height/2};
+    const end = {x:tc.x, y:tc.y - dir * ts.height/2};
+    if (Math.abs(start.x - end.x) < 4) {
+      const stub = 34 * dir;
+      const xLane = start.x + (lane === 0 ? 28 : lane * 1.5);
+      return compactPoints([
+        start,
+        {x:start.x, y:start.y + stub},
+        {x:xLane, y:start.y + stub},
+        {x:xLane, y:end.y - stub},
+        {x:end.x, y:end.y - stub},
+        end
+      ]);
+    }
+    const midY = (start.y + end.y) / 2 + lane;
+    return compactPoints([start, {x:start.x,y:midY}, {x:end.x,y:midY}, end]);
+  }
+
+  function compactPoints(points) {
+    return points.filter((p, i, arr) => i === 0 || p.x !== arr[i-1].x || p.y !== arr[i-1].y);
+  }
+
+  function calculateCrossings(routes) {
+    const result = new Map();
+    routes.forEach(r => result.set(r.edge.id, []));
+    for (let i = 0; i < routes.length; i++) {
+      const a = routes[i];
+      for (let j = i + 1; j < routes.length; j++) {
+        const b = routes[j];
+        if (a.edge.source === b.edge.source || a.edge.source === b.edge.target || a.edge.target === b.edge.source || a.edge.target === b.edge.target) {
+          // 같은 노드에서 만나는 선은 교차 점프 대상에서 제외
+        }
+        const aSegs = toSegments(a.points);
+        const bSegs = toSegments(b.points);
+        aSegs.forEach((sa, ai) => {
+          bSegs.forEach((sb, bi) => {
+            if (sa.orientation === sb.orientation) return;
+            const h = sa.orientation === 'h' ? sa : sb;
+            const v = sa.orientation === 'v' ? sa : sb;
+            const x = v.a.x;
+            const y = h.a.y;
+            const hMin = Math.min(h.a.x, h.b.x), hMax = Math.max(h.a.x, h.b.x);
+            const vMin = Math.min(v.a.y, v.b.y), vMax = Math.max(v.a.y, v.b.y);
+            if (x > hMin + 13 && x < hMax - 13 && y > vMin + 13 && y < vMax - 13) {
+              // 앞서 그려지는 선이 점프하도록 고정하여 시각적 일관성 유지
+              const jumper = i <= j ? a : b;
+              const segIndex = jumper === a ? ai : bi;
+              const seg = jumper === a ? sa : sb;
+              if (seg.orientation === 'h') {
+                result.get(jumper.edge.id).push({segmentIndex:segIndex, x, y});
+              } else {
+                // 점프를 수평선에만 그리기 위해 반대편 수평선을 사용
+                const other = jumper === a ? b : a;
+                const otherSegIndex = jumper === a ? bi : ai;
+                const otherSeg = jumper === a ? sb : sa;
+                if (otherSeg.orientation === 'h') {
+                  result.get(other.edge.id).push({segmentIndex:otherSegIndex, x, y});
+                }
+              }
+            }
+          });
+        });
+      }
+    }
+    return result;
+  }
+
+  function toSegments(points) {
+    const out = [];
+    for (let i=0; i<points.length-1; i++) {
+      const a = points[i], b = points[i+1];
+      out.push({a,b, orientation: Math.abs(a.y-b.y) < 0.1 ? 'h' : 'v'});
+    }
+    return out;
+  }
+
+  function buildPathWithJumps(points, jumps) {
+    if (!points.length) return '';
+    let d = `M ${points[0].x} ${points[0].y}`;
+    const bySegment = new Map();
+    jumps.forEach(j => {
+      if (!bySegment.has(j.segmentIndex)) bySegment.set(j.segmentIndex, []);
+      bySegment.get(j.segmentIndex).push(j);
+    });
+
+    for (let i=0; i<points.length-1; i++) {
+      const a = points[i], b = points[i+1];
+      const js = bySegment.get(i) || [];
+      if (Math.abs(a.y-b.y) < 0.1 && js.length) {
+        const dir = b.x >= a.x ? 1 : -1;
+        js.sort((u,v) => dir > 0 ? u.x-v.x : v.x-u.x);
+        let cursorX = a.x;
+        const radius = 7;
+        js.forEach(j => {
+          if (dir > 0 && (j.x - radius <= cursorX || j.x + radius >= b.x)) return;
+          if (dir < 0 && (j.x + radius >= cursorX || j.x - radius <= b.x)) return;
+          d += ` L ${j.x - radius*dir} ${a.y}`;
+          d += ` Q ${j.x} ${a.y - 11} ${j.x + radius*dir} ${a.y}`;
+          cursorX = j.x + radius*dir;
+        });
+        d += ` L ${b.x} ${b.y}`;
+      } else {
+        d += ` L ${b.x} ${b.y}`;
+      }
+    }
+    return d;
+  }
+
+  function pathMidPoint(points) {
+    if (!points.length) return {x:0,y:0};
+    let total = 0;
+    const lengths = [];
+    for (let i=0;i<points.length-1;i++) {
+      const len = Math.hypot(points[i+1].x-points[i].x, points[i+1].y-points[i].y);
+      lengths.push(len); total += len;
+    }
+    let target = total/2;
+    for (let i=0;i<lengths.length;i++) {
+      if (target <= lengths[i]) {
+        const a=points[i], b=points[i+1], t=lengths[i] ? target/lengths[i] : 0;
+        return {x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t};
+      }
+      target -= lengths[i];
+    }
+    return points[points.length-1];
+  }
+
+  function renderInspector() {
+    if (!selection) {
+      inspectorTitle.textContent = '정보 및 세부 내역';
+      inspectorSub.textContent = '노드나 화살표를 선택하세요.';
+      inspectorBody.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">⌘</div>
+          노드를 선택하면 이름, 설명, 담당자, 상태, 완료 예정일, 태그와 링크를 기록할 수 있습니다.<br><br>
+          화살표를 선택하면 이름, 색상과 선 모양을 편집할 수 있습니다.
+        </div>`;
+      return;
+    }
+
+    if (selection.type === 'node') {
+      const node = getNode(selection.id);
+      if (!node) { selection = null; return renderInspector(); }
+      inspectorTitle.textContent = '노드 정보';
+      inspectorSub.textContent = '선택한 노드의 세부 내용을 편집합니다.';
+      inspectorBody.innerHTML = `
+        ${field('노드 이름','nodeTitle','text',node.title)}
+        <div class="form-group">
+          <label class="form-label">노드 크기</label>
+          <div style="padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:#f8fafc;font-size:13px;color:#475569;">
+            <span id="nodeSizeReadout">${Math.round(nodeSize(node).width)} × ${Math.round(nodeSize(node).height)} px</span>
+            <div style="margin-top:4px;font-size:12px;color:var(--muted);">선택한 노드의 오른쪽 아래 손잡이를 드래그하세요.</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="nodeFontSizeRange">글씨 크기</label>
+          <div class="inline-row" style="align-items:center;">
+            <input id="nodeFontSizeRange" class="form-control" type="range" min="${MIN_FONT_SIZE}" max="${MAX_FONT_SIZE}" step="1" value="${Math.round(node.fontSize || DEFAULT_FONT_SIZE)}" style="padding:0;">
+            <input id="nodeFontSizeNumber" class="form-control" type="number" min="${MIN_FONT_SIZE}" max="${MAX_FONT_SIZE}" step="1" value="${Math.round(node.fontSize || DEFAULT_FONT_SIZE)}" style="max-width:84px;">
+          </div>
+          <div style="margin-top:5px;font-size:12px;color:var(--muted);">글씨가 넘치면 텍스트 노드가 자동으로 커집니다.</div>
+        </div>
+        ${node.type === 'image' ? `
+          <div class="form-group">
+            <label class="form-label">이미지 노드</label>
+            <div style="width:100%; height:180px; border:1px solid var(--border); border-radius:11px; overflow:hidden; background:${escapeHtml(node.color || '#ffffff')}; margin-bottom:8px;">
+              <img src="${escapeHtml(node.imageData)}" alt="${escapeHtml(node.title)}" style="width:100%;height:100%;object-fit:contain;object-position:center;display:block;">
+            </div>
+            <button id="replaceNodeImage" class="tool-btn" style="width:100%;">이미지 교체</button>
+          </div>` : ''}
+        <div class="form-group">
+          <label class="form-label">노드 색상</label>
+          <div id="nodePalette" class="palette"></div>
+          <div class="inline-row" style="margin-top:10px;">
+            <input id="nodeColorCustom" class="form-control" type="color" value="${safeColor(node.color)}" title="사용자 지정 색상">
+            <input id="nodeColorText" class="form-control" type="text" value="${escapeHtml(node.color)}" aria-label="색상 코드">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="nodeDescription">설명 / 세부 내역</label>
+          <textarea id="nodeDescription" class="form-control" placeholder="업무 내용, 아이디어, 참고사항 등을 입력하세요.">${escapeHtml(node.description)}</textarea>
+        </div>
+        <div class="inline-row">
+          ${field('담당자','nodeOwner','text',node.owner,'이름 또는 팀')}
+          <div class="form-group">
+            <label class="form-label" for="nodeStatus">상태</label>
+            <select id="nodeStatus" class="form-control">
+              ${['미정','아이디어','예정','진행 중','검토','완료','보류'].map(x=>`<option ${node.status===x?'selected':''}>${x}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        ${field('완료 예정일','nodeDueDate','date',node.dueDate)}
+        ${field('태그','nodeTags','text',node.tags,'예: 기획, 중요, 회의')}
+        ${field('링크','nodeLink','url',node.link,'https://...')}
+        <div class="section-divider"></div>
+        <button id="deleteSelectedNode" class="danger-btn">이 노드 삭제</button>
+      `;
+
+      const fontRange = el('nodeFontSizeRange');
+      const fontNumber = el('nodeFontSizeNumber');
+      let fontEditStarted = false;
+      const applyFontSize = raw => {
+        const value = clamp(Math.round(Number(raw) || DEFAULT_FONT_SIZE), MIN_FONT_SIZE, MAX_FONT_SIZE);
+        if (!fontEditStarted) { checkpoint(); fontEditStarted = true; }
+        node.fontSize = value;
+        fontRange.value = value;
+        fontNumber.value = value;
+        renderNodes();
+        renderEdges();
+        scheduleSave(false);
+      };
+      fontRange.addEventListener('input', e => applyFontSize(e.target.value));
+      fontNumber.addEventListener('input', e => applyFontSize(e.target.value));
+      [fontRange, fontNumber].forEach(control => {
+        control.addEventListener('change', () => { fontEditStarted = false; scheduleSave(); });
+        control.addEventListener('blur', () => { fontEditStarted = false; scheduleSave(); });
+      });
+
+      const palette = el('nodePalette');
+      PALETTE.forEach(color => {
+        const b = document.createElement('button');
+        b.className = `swatch${normalizeColor(node.color) === normalizeColor(color) ? ' selected' : ''}`;
+        b.style.background = color;
+        b.title = color;
+        b.addEventListener('click', () => updateNodeColor(node, color));
+        palette.appendChild(b);
+      });
+
+      bindInput('nodeTitle', v => node.title = v || '이름 없음', true);
+      bindInput('nodeDescription', v => node.description = v);
+      bindInput('nodeOwner', v => node.owner = v, true);
+      bindInput('nodeStatus', v => node.status = v, true);
+      bindInput('nodeDueDate', v => node.dueDate = v, true);
+      bindInput('nodeTags', v => node.tags = v);
+      bindInput('nodeLink', v => node.link = v);
+      if (node.type === 'image') {
+        el('replaceNodeImage')?.addEventListener('click', () => openImagePicker('replace', node.id));
+      }
+      el('nodeColorCustom').addEventListener('input', e => updateNodeColor(node, e.target.value));
+      el('nodeColorText').addEventListener('change', e => {
+        if (isValidCssColor(e.target.value)) updateNodeColor(node, e.target.value);
+        else { e.target.value = node.color; showToast('올바른 색상 코드를 입력하세요.'); }
+      });
+      el('deleteSelectedNode').addEventListener('click', () => deleteSelection());
+      return;
+    }
+
+    const edge = getEdge(selection.id);
+    if (!edge) { selection = null; return renderInspector(); }
+    const source = getNode(edge.source), target = getNode(edge.target);
+    inspectorTitle.textContent = '화살표 정보';
+    inspectorSub.textContent = `${source?.title || '?'} → ${target?.title || '?'}`;
+    inspectorBody.innerHTML = `
+      ${field('화살표 이름','edgeLabel','text',edge.label,'예: 원인, 다음 단계, 참조')}
+      <div class="form-group">
+        <label class="form-label" for="edgeColor">화살표 색상</label>
+        <div class="inline-row">
+          <input id="edgeColor" class="form-control" type="color" value="${safeColor(edge.color)}">
+          <input id="edgeColorText" class="form-control" type="text" value="${escapeHtml(edge.color)}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="edgeStyle">선 모양</label>
+        <select id="edgeStyle" class="form-control">
+          <option value="solid" ${!edge.dashed?'selected':''}>실선</option>
+          <option value="dashed" ${edge.dashed?'selected':''}>점선</option>
+        </select>
+      </div>
+      <div class="section-divider"></div>
+      <button id="deleteSelectedEdge" class="danger-btn">이 화살표 삭제</button>
+    `;
+    bindInput('edgeLabel', v => edge.label = v, false, true);
+    el('edgeColor').addEventListener('input', e => updateEdgeColor(edge, e.target.value));
+    el('edgeColorText').addEventListener('change', e => {
+      if (isValidCssColor(e.target.value)) updateEdgeColor(edge, e.target.value);
+      else { e.target.value = edge.color; showToast('올바른 색상 코드를 입력하세요.'); }
+    });
+    el('edgeStyle').addEventListener('change', e => {
+      checkpoint(); edge.dashed = e.target.value === 'dashed'; renderEdges(); scheduleSave();
+    });
+    el('deleteSelectedEdge').addEventListener('click', () => deleteSelection());
+  }
+
+  function field(label,id,type,value,placeholder='') {
+    return `<div class="form-group"><label class="form-label" for="${id}">${label}</label><input id="${id}" class="form-control" type="${type}" value="${escapeHtml(value || '')}" placeholder="${escapeHtml(placeholder)}"></div>`;
+  }
+
+  function bindInput(id, apply, redrawNode=false, redrawEdge=false) {
+    const input = el(id);
+    let started = false;
+    const start = () => { if (!started) { checkpoint(); started = true; } };
+    input.addEventListener('input', e => {
+      start();
+      apply(e.target.value);
+      if (redrawNode) renderNodes();
+      if (redrawEdge || redrawNode) renderEdges();
+      scheduleSave(false);
+    });
+    input.addEventListener('change', () => { started = false; scheduleSave(); });
+    input.addEventListener('blur', () => { started = false; scheduleSave(); });
+  }
+
+  function updateNodeColor(node, color) {
+    checkpoint();
+    node.color = color;
+    renderNodes();
+    renderEdges();
+    renderInspector();
+    scheduleSave();
+  }
+
+  function updateEdgeColor(edge, color) {
+    checkpoint();
+    edge.color = color;
+    renderEdges();
+    renderInspector();
+    scheduleSave();
+  }
+
+  function deleteSelection() {
+    if (!selection) return;
+    checkpoint();
+    if (selection.type === 'node') {
+      const id = selection.id;
+      project().nodes = project().nodes.filter(n => n.id !== id);
+      project().edges = project().edges.filter(e => e.source !== id && e.target !== id);
+      showToast('노드와 연결된 화살표를 삭제했습니다.');
+    } else {
+      project().edges = project().edges.filter(e => e.id !== selection.id);
+      showToast('화살표를 삭제했습니다.');
+    }
+    selection = null;
+    renderAll();
+    scheduleSave();
+  }
+
+  function showContextMenu(e, target) {
+    e.preventDefault();
+    e.stopPropagation();
+    contextTarget = target;
+    selection = target;
+    renderNodes(); renderEdges(); renderInspector();
+    contextMenu.innerHTML = '';
+
+    if (target.type === 'node') {
+      const rename = menuItem('이름 변경', false, () => {
+        hideContextMenu();
+        const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(target.id)}"]`);
+        div?.dispatchEvent(new MouseEvent('dblclick', {bubbles:true}));
+      });
+      contextMenu.appendChild(rename);
+    }
+    contextMenu.appendChild(menuItem(target.type === 'node' ? '노드 삭제' : '화살표 삭제', true, () => {
+      hideContextMenu();
+      deleteSelection();
+    }));
+
+    const x = Math.min(e.clientX, window.innerWidth - 190);
+    const y = Math.min(e.clientY, window.innerHeight - 110);
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+    contextMenu.classList.add('show');
+  }
+
+  function menuItem(text, danger, handler) {
+    const b = document.createElement('button');
+    b.className = `context-item${danger ? ' danger' : ''}`;
+    b.textContent = text;
+    b.addEventListener('click', handler);
+    return b;
+  }
+
+  function hideContextMenu() {
+    contextMenu.classList.remove('show');
+    contextTarget = null;
+  }
+
+  function toggleConnectMode() {
+    connectMode = !connectMode;
+    connectSourceId = null;
+    selection = null;
+    renderAll();
+  }
+
+  function cancelConnectMode() {
+    connectMode = false;
+    connectSourceId = null;
+    updateModeUI();
+  }
+
+  function updateModeUI() {
+    el('connectBtn').classList.toggle('active', connectMode);
+    viewport.classList.toggle('connecting', connectMode);
+    connectionBanner.classList.toggle('show', connectMode);
+    if (connectMode) {
+      connectionBanner.textContent = connectSourceId ? '연결할 도착 노드를 선택하세요' : '연결할 시작 노드를 선택하세요';
+      el('statusMode').textContent = '화살표 연결';
+      el('statusMode').classList.add('connect');
+      el('statusInfo').textContent = '시작 노드와 도착 노드를 순서대로 클릭하세요 · Esc: 취소';
+    } else {
+      el('statusMode').textContent = '선택';
+      el('statusMode').classList.remove('connect');
+      el('statusInfo').textContent = '배경 드래그: 화면 이동 · 휠: 확대/축소';
+    }
+  }
+
+  function beginPan(e) {
+    if (e.button !== 0 || e.target.closest('.node') || e.target.closest('.edge-hit')) return;
+    hideContextMenu();
+    if (connectMode) return;
+    const v = project().view;
+    panState = {startX:e.clientX, startY:e.clientY, panX:v.panX, panY:v.panY};
+    viewport.classList.add('panning');
+    window.addEventListener('mousemove', movePan);
+    window.addEventListener('mouseup', endPan, {once:true});
+  }
+
+  function movePan(e) {
+    if (!panState) return;
+    const v = project().view;
+    v.panX = panState.panX + (e.clientX - panState.startX);
+    v.panY = panState.panY + (e.clientY - panState.startY);
+    applyTransform();
+  }
+
+  function endPan() {
+    if (panState) scheduleSave(false);
+    panState = null;
+    viewport.classList.remove('panning');
+    window.removeEventListener('mousemove', movePan);
+  }
+
+  function zoomAt(clientX, clientY, factor) {
+    const p = project();
+    const v = p.view;
+    const rect = viewport.getBoundingClientRect();
+    const sx = clientX - rect.left;
+    const sy = clientY - rect.top;
+    const worldX = (sx - v.panX) / v.zoom;
+    const worldY = (sy - v.panY) / v.zoom;
+    const newZoom = clamp(v.zoom * factor, .35, 2.2);
+    v.panX = sx - worldX * newZoom;
+    v.panY = sy - worldY * newZoom;
+    v.zoom = newZoom;
+    applyTransform();
+    scheduleSave(false);
+  }
+
+  function fitView() {
+    const p = project();
+    const r = viewport.getBoundingClientRect();
+    if (!p.nodes.length) {
+      p.view.zoom = 1;
+      p.view.panX = r.width/2 - WORLD_W/2;
+      p.view.panY = r.height/2 - WORLD_H/2;
+      applyTransform();
+      return;
+    }
+    const minX = Math.min(...p.nodes.map(n => n.x));
+    const minY = Math.min(...p.nodes.map(n => n.y));
+    const maxX = Math.max(...p.nodes.map(n => n.x + nodeSize(n).width));
+    const maxY = Math.max(...p.nodes.map(n => n.y + nodeSize(n).height));
+    const padding = 90;
+    const contentW = maxX-minX + padding*2;
+    const contentH = maxY-minY + padding*2;
+    const zoom = clamp(Math.min(r.width/contentW, r.height/contentH), .35, 1.4);
+    p.view.zoom = zoom;
+    p.view.panX = r.width/2 - ((minX+maxX)/2)*zoom;
+    p.view.panY = r.height/2 - ((minY+maxY)/2)*zoom;
+    applyTransform();
+    scheduleSave(false);
+  }
+
+  function saveToFile() {
+    saveLocal();
+    const data = JSON.stringify(app, null, 2);
+    const blob = new Blob([data], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `mindmap_${date}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('마인드맵 파일을 저장했습니다.');
+  }
+
+  function loadFromFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!data || !Array.isArray(data.projects)) throw new Error('invalid');
+        app = data;
+        ensureState();
+        selection = null;
+        cancelConnectMode();
+        history = []; historyIndex = -1;
+        pushHistory(true);
+        renderAll();
+        saveLocal();
+        showToast('마인드맵 파일을 불러왔습니다.');
+      } catch {
+        alert('올바른 MindMap Studio JSON 파일이 아닙니다.');
+      } finally {
+        el('fileInput').value = '';
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function scheduleSave(markHistory=true) {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => saveLocal(), 180);
+  }
+
+  function saveLocal() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(app)); }
+    catch (err) { console.warn('자동 저장 실패', err); }
+  }
+
+  function loadLocal() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+
+  function checkpoint() {
+    if (historyLock) return;
+    const current = JSON.stringify(app);
+    if (history[historyIndex] === current) return;
+    history = history.slice(0, historyIndex + 1);
+    history.push(current);
+    if (history.length > 60) history.shift();
+    historyIndex = history.length - 1;
+    updateUndoRedo();
+  }
+
+  function pushHistory(force=false) {
+    if (historyLock) return;
+    const current = JSON.stringify(app);
+    if (!force && history[historyIndex] === current) return;
+    history = history.slice(0, historyIndex + 1);
+    history.push(current);
+    if (history.length > 60) history.shift();
+    historyIndex = history.length - 1;
+    updateUndoRedo();
+  }
+
+  function undo() {
+    // 현재 상태를 먼저 기록한 뒤 이전 체크포인트로 이동
+    const current = JSON.stringify(app);
+    if (history[historyIndex] !== current) {
+      history = history.slice(0, historyIndex + 1);
+      history.push(current);
+      historyIndex = history.length - 1;
+    }
+    if (historyIndex <= 0) return;
+    historyLock = true;
+    historyIndex--;
+    app = JSON.parse(history[historyIndex]);
+    ensureState();
+    selection = null;
+    cancelConnectMode();
+    historyLock = false;
+    renderAll(); saveLocal();
+  }
+
+  function redo() {
+    if (historyIndex >= history.length - 1) return;
+    historyLock = true;
+    historyIndex++;
+    app = JSON.parse(history[historyIndex]);
+    ensureState();
+    selection = null;
+    cancelConnectMode();
+    historyLock = false;
+    renderAll(); saveLocal();
+  }
+
+  function updateUndoRedo() {
+    el('undoBtn').disabled = historyIndex <= 0;
+    el('redoBtn').disabled = historyIndex >= history.length - 1;
+    el('undoBtn').style.opacity = el('undoBtn').disabled ? .45 : 1;
+    el('redoBtn').style.opacity = el('redoBtn').disabled ? .45 : 1;
+  }
+
+  function showToast(message) {
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => toast.classList.remove('show'), 1800);
+  }
+
+  function svgEl(tag, attrs={}) {
+    const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.entries(attrs).forEach(([k,v]) => node.setAttribute(k, v));
+    return node;
+  }
+
+  function cssEscape(value) {
+    return window.CSS?.escape ? CSS.escape(value) : value.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  }
+
+  function clamp(v,min,max) { return Math.min(max, Math.max(min,v)); }
+
+  function isValidCssColor(value) {
+    const s = new Option().style;
+    s.color = '';
+    s.color = value;
+    return s.color !== '';
+  }
+
+  function normalizeColor(value) {
+    const ctx = document.createElement('canvas').getContext('2d');
+    ctx.fillStyle = value;
+    return ctx.fillStyle;
+  }
+
+  function safeColor(value) {
+    const normalized = normalizeColor(value || '#ffffff');
+    if (normalized.startsWith('#')) return normalized.length === 4 ? '#' + [...normalized.slice(1)].map(x=>x+x).join('') : normalized;
+    const m = normalized.match(/\d+/g);
+    if (!m) return '#ffffff';
+    return '#' + m.slice(0,3).map(n => Number(n).toString(16).padStart(2,'0')).join('');
+  }
+
+  // Events
+  el('addNodeBtn').addEventListener('click', addNode);
+  el('addImageNodeBtn').addEventListener('click', () => openImagePicker('create'));
+  el('imageInput').addEventListener('change', e => handleImageFile(e.target.files[0]));
+  el('connectBtn').addEventListener('click', toggleConnectMode);
+  el('saveBtn').addEventListener('click', saveToFile);
+  el('loadBtn').addEventListener('click', () => el('fileInput').click());
+  el('fileInput').addEventListener('change', e => e.target.files[0] && loadFromFile(e.target.files[0]));
+  el('undoBtn').addEventListener('click', undo);
+  el('redoBtn').addEventListener('click', redo);
+  el('zoomInBtn').addEventListener('click', () => {
+    const r = viewport.getBoundingClientRect(); zoomAt(r.left+r.width/2, r.top+r.height/2, 1.15);
+  });
+  el('zoomOutBtn').addEventListener('click', () => {
+    const r = viewport.getBoundingClientRect(); zoomAt(r.left+r.width/2, r.top+r.height/2, 1/1.15);
+  });
+  el('fitBtn').addEventListener('click', fitView);
+  el('helpBtn').addEventListener('click', () => el('helpOverlay').classList.add('show'));
+  el('closeHelpBtn').addEventListener('click', () => el('helpOverlay').classList.remove('show'));
+  el('helpOverlay').addEventListener('click', e => { if (e.target === el('helpOverlay')) el('helpOverlay').classList.remove('show'); });
+
+  viewport.addEventListener('mousedown', beginPan);
+  viewport.addEventListener('click', e => {
+    if (e.target === viewport || e.target === world || e.target === nodesLayer || e.target === edgeSvg) {
+      selection = null;
+      renderNodes(); renderEdges(); renderInspector();
+    }
+  });
+  viewport.addEventListener('contextmenu', e => {
+    if (!e.target.closest('.node') && !e.target.closest('.edge-hit')) e.preventDefault();
+  });
+  viewport.addEventListener('wheel', e => {
+    e.preventDefault();
+    zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.1 : 1/1.1);
+  }, {passive:false});
+
+  document.addEventListener('mousedown', e => { if (!contextMenu.contains(e.target)) hideContextMenu(); });
+  document.addEventListener('keydown', e => {
+    const tag = document.activeElement?.tagName;
+    const editing = document.activeElement?.isContentEditable || ['INPUT','TEXTAREA','SELECT'].includes(tag);
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveToFile(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+    if (editing) return;
+    if (e.key === 'Escape') { cancelConnectMode(); selection = null; renderAll(); }
+    if (e.key === 'Delete' || e.key === 'Backspace') { if (selection) { e.preventDefault(); deleteSelection(); } }
+    if (e.key.toLowerCase() === 'n') addNode();
+    if (e.key.toLowerCase() === 'c') toggleConnectMode();
+  });
+
+  window.addEventListener('resize', () => applyTransform());
+  window.addEventListener('beforeunload', saveLocal);
+})();
+</script>
+</body>
+</html>
