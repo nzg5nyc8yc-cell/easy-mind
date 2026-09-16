@@ -659,7 +659,7 @@
 <body>
   <div class="app">
     <header class="toolbar">
-      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">PAGE FIX v6</span></div>
+      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">SHIFT+ENTER v7</span></div>
       <button id="addNodeBtn" class="tool-btn" title="화면 중앙에 새 노드 생성 (N)"><span>＋</span><span class="label">노드</span></button>
       <button id="addImageNodeBtn" class="tool-btn" title="이미지를 노드로 추가"><span>🖼</span><span class="label">이미지</span></button>
       <input id="imageInput" type="file" accept="image/*" hidden />
@@ -1187,7 +1187,26 @@
 
     title.addEventListener('blur', finish, {once:true});
     title.addEventListener('keydown', evt => {
-      if (evt.key === 'Enter') { evt.preventDefault(); title.blur(); }
+      if (evt.key === 'Enter') {
+        evt.preventDefault();
+        evt.stopPropagation();
+        if (evt.shiftKey) {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            range.deleteContents();
+            const brText = document.createTextNode('\n');
+            range.insertNode(brText);
+            range.setStartAfter(brText);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            title.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        } else {
+          title.blur();
+        }
+      }
       if (evt.key === 'Escape') { evt.preventDefault(); title.textContent = node.title; title.blur(); }
     });
   }
