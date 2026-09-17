@@ -313,6 +313,19 @@
 
     .node:hover { box-shadow: 0 10px 23px rgba(15,23,42,.17); }
     .node.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.16), 0 9px 22px rgba(15,23,42,.15); }
+    .node.block-selected { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,.18), 0 9px 22px rgba(15,23,42,.12); }
+
+    #blockSelectRect {
+      position: absolute;
+      display: none;
+      border: 1.5px dashed #7c3aed;
+      background: rgba(124,58,237,.10);
+      pointer-events: none;
+      z-index: 30;
+    }
+    #blockSelectRect.show { display: block; }
+    #viewport.block-mode { cursor: crosshair; }
+
     .node.connection-source { border-color: #7c3aed; box-shadow: 0 0 0 4px rgba(124,58,237,.18), 0 9px 22px rgba(15,23,42,.15); }
 
     .resize-handle {
@@ -385,6 +398,8 @@
       stroke-linecap: round;
       pointer-events: none;
     }
+
+    .edge-visible.block-selected { stroke: #7c3aed !important; stroke-width: 3.4; }
 
     .edge-visible.selected {
       stroke-width: 4;
@@ -659,11 +674,12 @@
 <body>
   <div class="app">
     <header class="toolbar">
-      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">SHIFT+ENTER v7</span></div>
+      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">BLOCK SELECT v8</span></div>
       <button id="addNodeBtn" class="tool-btn" title="화면 중앙에 새 노드 생성 (N)"><span>＋</span><span class="label">노드</span></button>
       <button id="addImageNodeBtn" class="tool-btn" title="이미지를 노드로 추가"><span>🖼</span><span class="label">이미지</span></button>
       <input id="imageInput" type="file" accept="image/*" hidden />
       <button id="connectBtn" class="tool-btn" title="화살표 연결 모드 (C)"><span>↗</span><span class="label">화살표</span></button>
+      <button id="blockBtn" class="tool-btn" title="블록 지정: 드래그로 여러 개체 선택 (B)"><span>▧</span><span class="label">블록지정</span></button>
       <div class="toolbar-sep"></div>
       <button id="saveBtn" class="tool-btn" title="파일로 저장"><span>💾</span><span class="label">저장</span></button>
       <button id="loadBtn" class="tool-btn" title="파일 불러오기"><span>📂</span><span class="label">불러오기</span></button>
@@ -693,6 +709,7 @@
           </svg>
           <div id="nodesLayer"></div>
         </div>
+        <div id="blockSelectRect"></div>
       </div>
       <div id="connectionBanner" class="connection-banner">연결할 시작 노드를 선택하세요</div>
       <div class="statusbar">
@@ -721,6 +738,7 @@
         <li><b>이미지 노드:</b> 상단의 ‘이미지’ 버튼으로 사진을 불러오면 화면 중앙에 이미지 노드가 생성됩니다. 이미지 전체가 잘리지 않도록 노드 안에 자동 맞춤됩니다.</li>
         <li><b>이름 변경:</b> 일반 노드는 제목을 더블클릭해 입력하고, 이미지 노드는 더블클릭 후 이름을 입력합니다.</li>
         <li><b>노드 이동:</b> 노드를 마우스로 끌어 이동합니다.</li>
+        <li><b>블록 지정:</b> 상단 ‘블록지정’ 또는 <span class="kbd">B</span> → 빈 작업영역을 드래그해 여러 노드·화살표를 선택합니다. 선택된 노드 하나를 끌면 선택된 노드가 함께 이동하며, 이동·삭제 같은 액션 뒤에는 블록 선택이 자동 해제됩니다.</li>
         <li><b>크기 변경:</b> 노드를 선택한 뒤 오른쪽 아래의 파란 손잡이를 드래그합니다. 일반 노드와 이미지 노드 모두 가로·세로를 자유롭게 조절할 수 있습니다.</li>
         <li><b>화살표 생성:</b> ‘화살표’ 버튼 → 시작 노드 → 도착 노드 순서로 클릭합니다.</li>
         <li><b>상세 정보:</b> 노드를 선택한 뒤 오른쪽에서 설명, 담당자, 상태, 날짜, 태그 등을 입력합니다.</li>
@@ -766,9 +784,13 @@
   const contextMenu = el('contextMenu');
   const toast = el('toast');
   const connectionBanner = el('connectionBanner');
+  const blockSelectRect = el('blockSelectRect');
 
   let app = loadLocal() || createInitialState();
   let selection = null; // {type:'node'|'edge', id}
+  let blockMode = false;
+  let blockSelection = { nodeIds: new Set(), edgeIds: new Set() };
+  let blockDragState = null;
   let connectMode = false;
   let connectSourceId = null;
   let dragState = null;
@@ -908,6 +930,8 @@
         if (app.activeProjectId !== p.id) {
           app.activeProjectId = p.id;
           selection = null;
+          clearBlockSelection(false);
+          blockMode = false;
           cancelConnectMode();
           cancelAnimationFrame(textAutoFitFrame);
           textAutoFitFrame = null;
@@ -958,6 +982,8 @@
     });
     app.activeProjectId = id;
     selection = null;
+    clearBlockSelection(false);
+    blockMode = false;
     cancelConnectMode();
     renderAll();
     scheduleSave();
@@ -976,6 +1002,8 @@
     app.projects = app.projects.filter(x => x.id !== id);
     if (app.activeProjectId === id) app.activeProjectId = app.projects[0].id;
     selection = null;
+    clearBlockSelection(false);
+    blockMode = false;
     cancelConnectMode();
     renderAll();
     scheduleSave();
@@ -996,6 +1024,7 @@
       const div = document.createElement('div');
       div.className = `node${node.type === 'image' ? ' image-node' : ''}`;
       if (selection?.type === 'node' && selection.id === node.id) div.classList.add('selected');
+      if (blockSelection.nodeIds.has(node.id)) div.classList.add('block-selected');
       if (connectSourceId === node.id) div.classList.add('connection-source');
       div.dataset.id = node.id;
       div.style.left = `${node.x}px`;
@@ -1144,6 +1173,7 @@
   function startInlineRename(e, nodeId) {
     e.stopPropagation();
     cancelConnectMode();
+    if (blockSelection.nodeIds.size || blockSelection.edgeIds.size) clearBlockSelection(false);
     const node = getNode(nodeId);
     if (!node) return;
 
@@ -1250,6 +1280,8 @@
       return;
     }
 
+    if (blockSelection.nodeIds.has(nodeId)) return;
+    if (blockSelection.nodeIds.size || blockSelection.edgeIds.size) clearBlockSelection(false);
     selection = {type:'node', id:nodeId};
     renderNodes();
     renderEdges();
@@ -1332,12 +1364,22 @@
     const node = getNode(nodeId);
     if (!node) return;
     const v = project().view;
+    const groupIds = blockSelection.nodeIds.has(nodeId) ? [...blockSelection.nodeIds] : [nodeId];
+    if (!blockSelection.nodeIds.has(nodeId) && (blockSelection.nodeIds.size || blockSelection.edgeIds.size)) clearBlockSelection(false);
+    const startPositions = new Map();
+    groupIds.forEach(id => {
+      const n = getNode(id);
+      if (n) {
+        const sz = nodeSize(n);
+        startPositions.set(id, {x:n.x, y:n.y, width:sz.width, height:sz.height});
+      }
+    });
     dragState = {
       nodeId,
+      groupNodeIds: groupIds,
+      startPositions,
       startMouseX: e.clientX,
       startMouseY: e.clientY,
-      startX: node.x,
-      startY: node.y,
       moved: false,
       checkpointed: false,
       zoom: v.zoom
@@ -1348,38 +1390,47 @@
 
   function onNodeMouseMove(e) {
     if (!dragState) return;
-    const dx = (e.clientX - dragState.startMouseX) / dragState.zoom;
-    const dy = (e.clientY - dragState.startMouseY) / dragState.zoom;
+    let dx = (e.clientX - dragState.startMouseX) / dragState.zoom;
+    let dy = (e.clientY - dragState.startMouseY) / dragState.zoom;
     if (Math.hypot(dx,dy) > 2) dragState.moved = true;
     if (!dragState.moved) return;
-    if (!dragState.checkpointed) {
-      checkpoint();
-      dragState.checkpointed = true;
-    }
-    const node = getNode(dragState.nodeId);
-    if (!node) return;
-    const size = nodeSize(node);
-    node.x = clamp(dragState.startX + dx, 0, WORLD_W - size.width);
-    node.y = clamp(dragState.startY + dy, 0, WORLD_H - size.height);
-    const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(node.id)}"]`);
-    if (div) {
-      div.style.left = `${node.x}px`;
-      div.style.top = `${node.y}px`;
-    }
+    if (!dragState.checkpointed) { checkpoint(); dragState.checkpointed = true; }
+    const starts = [...dragState.startPositions.values()];
+    if (!starts.length) return;
+    dx = clamp(dx, Math.max(...starts.map(p => -p.x)), Math.min(...starts.map(p => WORLD_W - p.width - p.x)));
+    dy = clamp(dy, Math.max(...starts.map(p => -p.y)), Math.min(...starts.map(p => WORLD_H - p.height - p.y)));
+    dragState.startPositions.forEach((pos, id) => {
+      const n = getNode(id);
+      if (!n) return;
+      n.x = pos.x + dx;
+      n.y = pos.y + dy;
+      const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(id)}"]`);
+      if (div) { div.style.left = `${n.x}px`; div.style.top = `${n.y}px`; }
+    });
     renderEdges();
   }
 
   function onNodeMouseUp() {
     if (dragState?.moved) {
-      selection = {type:'node', id:dragState.nodeId};
+      const movedAsBlock = dragState.groupNodeIds?.length > 1 || blockSelection.nodeIds.size || blockSelection.edgeIds.size;
       scheduleSave();
-      renderInspector();
+      if (movedAsBlock) {
+        clearBlockSelection(false);
+        selection = null;
+        renderNodes(); renderEdges(); renderInspector(); updateModeUI();
+        showToast('선택한 개체를 이동했습니다. 블록 지정이 해제되었습니다.');
+      } else {
+        selection = {type:'node', id:dragState.nodeId};
+        renderInspector();
+      }
     }
     setTimeout(() => { dragState = null; }, 0);
     window.removeEventListener('mousemove', onNodeMouseMove);
   }
 
   function addNode() {
+    clearBlockSelection(false);
+    blockMode = false;
     const p = project();
     const r = viewport.getBoundingClientRect();
     const v = p.view;
@@ -1526,7 +1577,7 @@
       const d = buildPathWithJumps(points, crossings.get(edge.id) || []);
       const visible = svgEl('path', {
         d,
-        class: `edge-visible${selection?.type === 'edge' && selection.id === edge.id ? ' selected' : ''}`,
+        class: `edge-visible${selection?.type === 'edge' && selection.id === edge.id ? ' selected' : ''}${blockSelection.edgeIds.has(edge.id) ? ' block-selected' : ''}`,
         stroke: edge.color || '#64748b',
         'marker-end': 'url(#arrow-default)'
       });
@@ -1535,6 +1586,8 @@
       const hit = svgEl('path', {d, class:'edge-hit'});
       hit.addEventListener('click', evt => {
         evt.stopPropagation();
+        if (blockSelection.edgeIds.has(edge.id)) return;
+        if (blockSelection.nodeIds.size || blockSelection.edgeIds.size) clearBlockSelection(false);
         selection = {type:'edge', id:edge.id};
         cancelConnectMode();
         renderEdges();
@@ -1717,6 +1770,13 @@
   }
 
   function renderInspector() {
+    if (blockSelection.nodeIds.size || blockSelection.edgeIds.size) {
+      const count = blockSelection.nodeIds.size + blockSelection.edgeIds.size;
+      inspectorTitle.textContent = '블록 선택';
+      inspectorSub.textContent = `${count}개 개체가 선택되었습니다.`;
+      inspectorBody.innerHTML = `<div class="empty-state">선택된 노드 하나를 드래그하면 함께 이동합니다.<br><br><b>Delete</b> 키로 함께 삭제할 수 있습니다.<br>이동·삭제 후 블록 지정은 자동으로 해제됩니다.</div>`;
+      return;
+    }
     if (!selection) {
       inspectorTitle.textContent = '정보 및 세부 내역';
       inspectorSub.textContent = '노드나 화살표를 선택하세요.';
@@ -1909,6 +1969,19 @@
   }
 
   function deleteSelection() {
+    if (blockSelection.nodeIds.size || blockSelection.edgeIds.size) {
+      checkpoint();
+      const nodeIds = new Set(blockSelection.nodeIds);
+      const edgeIds = new Set(blockSelection.edgeIds);
+      project().nodes = project().nodes.filter(n => !nodeIds.has(n.id));
+      project().edges = project().edges.filter(e => !edgeIds.has(e.id) && !nodeIds.has(e.source) && !nodeIds.has(e.target));
+      clearBlockSelection(false);
+      selection = null;
+      renderAll();
+      scheduleSave();
+      showToast('블록 지정된 개체를 삭제했습니다. 선택이 해제되었습니다.');
+      return;
+    }
     if (!selection) return;
     checkpoint();
     if (selection.type === 'node') {
@@ -1929,11 +2002,17 @@
     e.preventDefault();
     e.stopPropagation();
     contextTarget = target;
-    selection = target;
-    renderNodes(); renderEdges(); renderInspector();
+    const inBlock = target.type === 'node' ? blockSelection.nodeIds.has(target.id) : blockSelection.edgeIds.has(target.id);
+    if (!inBlock) {
+      clearBlockSelection(false);
+      selection = target;
+      renderNodes(); renderEdges(); renderInspector();
+    }
     contextMenu.innerHTML = '';
 
-    if (target.type === 'node') {
+    if (inBlock) {
+      contextMenu.appendChild(menuItem('선택 항목 삭제', true, () => { hideContextMenu(); deleteSelection(); }));
+    } else if (target.type === 'node') {
       const rename = menuItem('이름 변경', false, () => {
         hideContextMenu();
         const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(target.id)}"]`);
@@ -1941,7 +2020,7 @@
       });
       contextMenu.appendChild(rename);
     }
-    contextMenu.appendChild(menuItem(target.type === 'node' ? '노드 삭제' : '화살표 삭제', true, () => {
+    if (!inBlock) contextMenu.appendChild(menuItem(target.type === 'node' ? '노드 삭제' : '화살표 삭제', true, () => {
       hideContextMenu();
       deleteSelection();
     }));
@@ -1966,10 +2045,30 @@
     contextTarget = null;
   }
 
+  function clearBlockSelection(shouldRender=true) {
+    blockSelection.nodeIds.clear();
+    blockSelection.edgeIds.clear();
+    blockSelectRect.classList.remove('show');
+    blockDragState = null;
+    if (shouldRender) { renderNodes(); renderEdges(); renderInspector(); updateModeUI(); }
+  }
+
+  function toggleBlockMode() {
+    blockMode = !blockMode;
+    if (blockMode) {
+      cancelConnectMode();
+      selection = null;
+      clearBlockSelection(false);
+    }
+    updateModeUI(); renderNodes(); renderEdges(); renderInspector();
+  }
+
   function toggleConnectMode() {
     connectMode = !connectMode;
     connectSourceId = null;
     selection = null;
+    blockMode = false;
+    clearBlockSelection(false);
     renderAll();
   }
 
@@ -1981,13 +2080,24 @@
 
   function updateModeUI() {
     el('connectBtn').classList.toggle('active', connectMode);
+    el('blockBtn').classList.toggle('active', blockMode);
     viewport.classList.toggle('connecting', connectMode);
+    viewport.classList.toggle('block-mode', blockMode);
     connectionBanner.classList.toggle('show', connectMode);
     if (connectMode) {
       connectionBanner.textContent = connectSourceId ? '연결할 도착 노드를 선택하세요' : '연결할 시작 노드를 선택하세요';
       el('statusMode').textContent = '화살표 연결';
       el('statusMode').classList.add('connect');
       el('statusInfo').textContent = '시작 노드와 도착 노드를 순서대로 클릭하세요 · Esc: 취소';
+    } else if (blockMode) {
+      el('statusMode').textContent = '블록 지정';
+      el('statusMode').classList.remove('connect');
+      el('statusInfo').textContent = '빈 작업영역을 드래그해 여러 노드·화살표를 선택하세요 · Esc: 취소';
+    } else if (blockSelection.nodeIds.size || blockSelection.edgeIds.size) {
+      const count = blockSelection.nodeIds.size + blockSelection.edgeIds.size;
+      el('statusMode').textContent = `블록 ${count}개`;
+      el('statusMode').classList.remove('connect');
+      el('statusInfo').textContent = '선택된 노드 하나를 드래그하면 함께 이동 · Delete: 함께 삭제 · 액션 후 자동 해제';
     } else {
       el('statusMode').textContent = '선택';
       el('statusMode').classList.remove('connect');
@@ -1995,10 +2105,73 @@
     }
   }
 
+  function beginBlockDrag(e) {
+    if (!blockMode || e.button !== 0 || e.target.closest('.node') || e.target.closest('.edge-hit')) return false;
+    e.preventDefault();
+    hideContextMenu();
+    const vr = viewport.getBoundingClientRect();
+    blockDragState = { startX:e.clientX, startY:e.clientY, viewportRect:vr };
+    blockSelectRect.style.left = `${e.clientX - vr.left}px`;
+    blockSelectRect.style.top = `${e.clientY - vr.top}px`;
+    blockSelectRect.style.width = '0px'; blockSelectRect.style.height = '0px';
+    blockSelectRect.classList.add('show');
+    window.addEventListener('mousemove', moveBlockDrag);
+    window.addEventListener('mouseup', endBlockDrag, {once:true});
+    return true;
+  }
+
+  function moveBlockDrag(e) {
+    if (!blockDragState) return;
+    const vr = blockDragState.viewportRect;
+    const left = Math.max(0, Math.min(blockDragState.startX, e.clientX) - vr.left);
+    const top = Math.max(0, Math.min(blockDragState.startY, e.clientY) - vr.top);
+    const right = Math.min(vr.width, Math.max(blockDragState.startX, e.clientX) - vr.left);
+    const bottom = Math.min(vr.height, Math.max(blockDragState.startY, e.clientY) - vr.top);
+    blockSelectRect.style.left = `${left}px`; blockSelectRect.style.top = `${top}px`;
+    blockSelectRect.style.width = `${Math.max(0,right-left)}px`; blockSelectRect.style.height = `${Math.max(0,bottom-top)}px`;
+  }
+
+  function rectsIntersect(a,b) {
+    return a.x <= b.x+b.width && a.x+a.width >= b.x && a.y <= b.y+b.height && a.y+a.height >= b.y;
+  }
+
+  function endBlockDrag(e) {
+    if (!blockDragState) return;
+    const vr = blockDragState.viewportRect;
+    const v = project().view;
+    const x1 = (Math.min(blockDragState.startX, e.clientX) - vr.left - v.panX) / v.zoom;
+    const y1 = (Math.min(blockDragState.startY, e.clientY) - vr.top - v.panY) / v.zoom;
+    const x2 = (Math.max(blockDragState.startX, e.clientX) - vr.left - v.panX) / v.zoom;
+    const y2 = (Math.max(blockDragState.startY, e.clientY) - vr.top - v.panY) / v.zoom;
+    const selRect = {x:x1, y:y1, width:x2-x1, height:y2-y1};
+    clearBlockSelection(false);
+    project().nodes.forEach(n => {
+      const sz = nodeSize(n);
+      if (rectsIntersect(selRect, {x:n.x,y:n.y,width:sz.width,height:sz.height})) blockSelection.nodeIds.add(n.id);
+    });
+    project().edges.forEach((edge, index) => {
+      const pts = routeEdge(edge, index);
+      if (!pts.length) return;
+      const minX = Math.min(...pts.map(p=>p.x)), maxX = Math.max(...pts.map(p=>p.x));
+      const minY = Math.min(...pts.map(p=>p.y)), maxY = Math.max(...pts.map(p=>p.y));
+      if (rectsIntersect(selRect, {x:minX,y:minY,width:maxX-minX,height:maxY-minY})) blockSelection.edgeIds.add(edge.id);
+    });
+    blockMode = false;
+    blockSelectRect.classList.remove('show');
+    blockDragState = null;
+    selection = null;
+    window.removeEventListener('mousemove', moveBlockDrag);
+    renderNodes(); renderEdges(); renderInspector(); updateModeUI();
+    const count = blockSelection.nodeIds.size + blockSelection.edgeIds.size;
+    showToast(count ? `${count}개 개체를 블록 지정했습니다.` : '선택된 개체가 없습니다.');
+  }
+
   function beginPan(e) {
+    if (beginBlockDrag(e)) return;
     if (e.button !== 0 || e.target.closest('.node') || e.target.closest('.edge-hit')) return;
     hideContextMenu();
-    if (connectMode) return;
+    if (connectMode || blockMode) return;
+    if (blockSelection.nodeIds.size || blockSelection.edgeIds.size) { clearBlockSelection(); return; }
     const v = project().view;
     panState = {startX:e.clientX, startY:e.clientY, panX:v.panX, panY:v.panY};
     viewport.classList.add('panning');
@@ -2226,6 +2399,7 @@
   el('addImageNodeBtn').addEventListener('click', () => openImagePicker('create'));
   el('imageInput').addEventListener('change', e => handleImageFile(e.target.files[0]));
   el('connectBtn').addEventListener('click', toggleConnectMode);
+  el('blockBtn').addEventListener('click', toggleBlockMode);
   el('saveBtn').addEventListener('click', saveToFile);
   el('loadBtn').addEventListener('click', () => el('fileInput').click());
   el('fileInput').addEventListener('change', e => e.target.files[0] && loadFromFile(e.target.files[0]));
@@ -2245,8 +2419,10 @@
   viewport.addEventListener('mousedown', beginPan);
   viewport.addEventListener('click', e => {
     if (e.target === viewport || e.target === world || e.target === nodesLayer || e.target === edgeSvg) {
+      if (blockMode || blockDragState) return;
       selection = null;
-      renderNodes(); renderEdges(); renderInspector();
+      if (blockSelection.nodeIds.size || blockSelection.edgeIds.size) clearBlockSelection(false);
+      renderNodes(); renderEdges(); renderInspector(); updateModeUI();
     }
   });
   viewport.addEventListener('contextmenu', e => {
@@ -2265,10 +2441,11 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
     if (editing) return;
-    if (e.key === 'Escape') { cancelConnectMode(); selection = null; renderAll(); }
-    if (e.key === 'Delete' || e.key === 'Backspace') { if (selection) { e.preventDefault(); deleteSelection(); } }
+    if (e.key === 'Escape') { cancelConnectMode(); blockMode = false; clearBlockSelection(false); selection = null; renderAll(); }
+    if (e.key === 'Delete' || e.key === 'Backspace') { if (selection || blockSelection.nodeIds.size || blockSelection.edgeIds.size) { e.preventDefault(); deleteSelection(); } }
     if (e.key.toLowerCase() === 'n') addNode();
     if (e.key.toLowerCase() === 'c') toggleConnectMode();
+    if (e.key.toLowerCase() === 'b') toggleBlockMode();
   });
 
   window.addEventListener('resize', () => applyTransform());
