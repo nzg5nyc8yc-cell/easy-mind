@@ -202,8 +202,7 @@
       overflow: hidden;
       cursor: default;
       background-color: #f8fafc;
-      background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
-      background-size: 24px 24px;
+      background-image: none;
     }
 
     #viewport.panning { cursor: default; }
@@ -329,16 +328,18 @@
     #groupSelectionBox {
       position: absolute;
       display: none;
-      border: 2px dashed #7c3aed;
-      background: rgba(124,58,237,.045);
-      box-shadow: 0 0 0 1px rgba(255,255,255,.65) inset;
+      box-sizing: border-box;
+      border: 3px dashed #7c3aed;
+      background: rgba(124,58,237,.07);
+      box-shadow: 0 0 0 2px rgba(255,255,255,.92), 0 0 0 4px rgba(124,58,237,.20);
       pointer-events: auto;
       cursor: move;
-      z-index: 40;
+      z-index: 1000;
+      outline: none;
     }
     #groupSelectionBox.show { display: block; }
     #groupSelectionBox::before {
-      content: '선택 그룹';
+      content: '선택 그룹 · ' attr(data-count) '개';
       position: absolute;
       left: 8px;
       top: -26px;
@@ -700,7 +701,7 @@
 <body>
   <div class="app">
     <header class="toolbar">
-      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">GROUP SELECT v9</span></div>
+      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">SELECTION PERSIST v14</span></div>
       <button id="addNodeBtn" class="tool-btn" title="화면 중앙에 새 노드 생성 (N)"><span>＋</span><span class="label">노드</span></button>
       <button id="addImageNodeBtn" class="tool-btn" title="이미지를 노드로 추가"><span>🖼</span><span class="label">이미지</span></button>
       <input id="imageInput" type="file" accept="image/*" hidden />
@@ -734,9 +735,9 @@
             </defs>
           </svg>
           <div id="nodesLayer"></div>
-          <div id="groupSelectionBox" aria-label="블록 선택 그룹"></div>
         </div>
         <div id="blockSelectRect"></div>
+        <div id="groupSelectionBox" aria-label="블록 선택 그룹"></div>
       </div>
       <div id="connectionBanner" class="connection-banner">연결할 시작 노드를 선택하세요</div>
       <div class="statusbar">
@@ -813,6 +814,9 @@
   const connectionBanner = el('connectionBanner');
   const blockSelectRect = el('blockSelectRect');
   const groupSelectionBox = el('groupSelectionBox');
+  // 선택 박스는 노드/화살표와 동일한 월드 좌표계 안에서 렌더링한다.
+  // 화면 좌표 변환이나 fixed overlay에 의존하지 않는다.
+  world.appendChild(groupSelectionBox);
 
   let app = loadLocal() || createInitialState();
   let selection = null; // {type:'node'|'edge', id}
@@ -820,6 +824,7 @@
   let blockSelection = { nodeIds: new Set(), edgeIds: new Set() };
   let blockDragState = null;
   let groupMoveState = null;
+  let suppressViewportClickOnce = false; // 블록 선택 직후 발생하는 click 이벤트가 선택을 해제하지 않도록 방지
   let connectMode = false;
   let connectSourceId = null;
   let dragState = null;
@@ -1042,8 +1047,7 @@
     const v = project().view;
     world.style.transform = `translate(${v.panX}px, ${v.panY}px) scale(${v.zoom})`;
     el('zoomLabel').textContent = `${Math.round(v.zoom * 100)}%`;
-    viewport.style.backgroundPosition = `${v.panX % (24*v.zoom)}px ${v.panY % (24*v.zoom)}px`;
-    viewport.style.backgroundSize = `${24*v.zoom}px ${24*v.zoom}px`;
+    if (blockSelection.nodeIds.size || blockSelection.edgeIds.size) renderGroupSelectionBox();
   }
 
   function renderNodes() {
@@ -2053,15 +2057,29 @@
   }
 
   function renderGroupSelectionBox() {
-    const b = getBlockBounds();
-    if (!b) {
+    if (!blockSelection.nodeIds.size && !blockSelection.edgeIds.size) {
       groupSelectionBox.classList.remove('show');
+      groupSelectionBox.style.display = 'none';
       return;
     }
-    groupSelectionBox.style.left = `${b.x}px`;
-    groupSelectionBox.style.top = `${b.y}px`;
-    groupSelectionBox.style.width = `${Math.max(8,b.width)}px`;
-    groupSelectionBox.style.height = `${Math.max(8,b.height)}px`;
+
+    // 블록 선택과 동일한 월드 좌표계에서 직접 그린다.
+    // world 자체가 pan/zoom transform을 받으므로 별도의 화면 좌표 환산이 필요 없다.
+    const bounds = getBlockBounds();
+    if (!bounds) {
+      groupSelectionBox.classList.remove('show');
+      groupSelectionBox.style.display = 'none';
+      return;
+    }
+
+    groupSelectionBox.style.left = `${bounds.x}px`;
+    groupSelectionBox.style.top = `${bounds.y}px`;
+    groupSelectionBox.style.width = `${Math.max(18, bounds.width)}px`;
+    groupSelectionBox.style.height = `${Math.max(18, bounds.height)}px`;
+    groupSelectionBox.style.display = 'block';
+    groupSelectionBox.style.visibility = 'visible';
+    groupSelectionBox.style.opacity = '1';
+    groupSelectionBox.dataset.count = String(blockSelection.nodeIds.size + blockSelection.edgeIds.size);
     groupSelectionBox.classList.add('show');
   }
 
@@ -2240,7 +2258,7 @@
     } else {
       el('statusMode').textContent = '선택';
       el('statusMode').classList.remove('connect');
-      el('statusInfo').textContent = '배경 드래그: 화면 이동 · 휠: 확대/축소';
+      el('statusInfo').textContent = '점선 박스 드래그: 그룹 이동 · Delete: 그룹 삭제 · 배경 드래그: 화면 이동 · 휠: 확대/축소';
     }
   }
 
@@ -2298,9 +2316,13 @@
     blockMode = false;
     blockSelectRect.classList.remove('show');
     blockDragState = null;
+    // mouseup 직후 브라우저가 같은 제스처의 click을 발생시킨다.
+    // 그 click을 빈 작업영역 클릭으로 처리하면 방금 만든 블록 선택이 즉시 풀리므로 1회 무시한다.
+    suppressViewportClickOnce = true;
+    setTimeout(() => { suppressViewportClickOnce = false; }, 0);
     selection = null;
     window.removeEventListener('mousemove', moveBlockDrag);
-    renderNodes(); renderEdges(); renderInspector(); updateModeUI();
+    renderNodes(); renderEdges(); renderGroupSelectionBox(); renderInspector(); updateModeUI();
     const count = blockSelection.nodeIds.size + blockSelection.edgeIds.size;
     showToast(count ? `${count}개 개체를 블록 지정했습니다.` : '선택된 개체가 없습니다.');
   }
@@ -2561,6 +2583,11 @@
 
   viewport.addEventListener('mousedown', beginPan);
   viewport.addEventListener('click', e => {
+    if (suppressViewportClickOnce) {
+      suppressViewportClickOnce = false;
+      e.stopPropagation();
+      return;
+    }
     if (e.target === viewport || e.target === world || e.target === nodesLayer || e.target === edgeSvg) {
       if (blockMode || blockDragState) return;
       selection = null;
