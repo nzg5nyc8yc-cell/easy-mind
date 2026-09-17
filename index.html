@@ -326,6 +326,32 @@
     #blockSelectRect.show { display: block; }
     #viewport.block-mode { cursor: crosshair; }
 
+    #groupSelectionBox {
+      position: absolute;
+      display: none;
+      border: 2px dashed #7c3aed;
+      background: rgba(124,58,237,.045);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.65) inset;
+      pointer-events: auto;
+      cursor: move;
+      z-index: 40;
+    }
+    #groupSelectionBox.show { display: block; }
+    #groupSelectionBox::before {
+      content: '선택 그룹';
+      position: absolute;
+      left: 8px;
+      top: -26px;
+      padding: 3px 7px;
+      border-radius: 6px;
+      background: #7c3aed;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
     .node.connection-source { border-color: #7c3aed; box-shadow: 0 0 0 4px rgba(124,58,237,.18), 0 9px 22px rgba(15,23,42,.15); }
 
     .resize-handle {
@@ -674,7 +700,7 @@
 <body>
   <div class="app">
     <header class="toolbar">
-      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">BLOCK SELECT v8</span></div>
+      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">GROUP SELECT v9</span></div>
       <button id="addNodeBtn" class="tool-btn" title="화면 중앙에 새 노드 생성 (N)"><span>＋</span><span class="label">노드</span></button>
       <button id="addImageNodeBtn" class="tool-btn" title="이미지를 노드로 추가"><span>🖼</span><span class="label">이미지</span></button>
       <input id="imageInput" type="file" accept="image/*" hidden />
@@ -708,6 +734,7 @@
             </defs>
           </svg>
           <div id="nodesLayer"></div>
+          <div id="groupSelectionBox" aria-label="블록 선택 그룹"></div>
         </div>
         <div id="blockSelectRect"></div>
       </div>
@@ -738,7 +765,7 @@
         <li><b>이미지 노드:</b> 상단의 ‘이미지’ 버튼으로 사진을 불러오면 화면 중앙에 이미지 노드가 생성됩니다. 이미지 전체가 잘리지 않도록 노드 안에 자동 맞춤됩니다.</li>
         <li><b>이름 변경:</b> 일반 노드는 제목을 더블클릭해 입력하고, 이미지 노드는 더블클릭 후 이름을 입력합니다.</li>
         <li><b>노드 이동:</b> 노드를 마우스로 끌어 이동합니다.</li>
-        <li><b>블록 지정:</b> 상단 ‘블록지정’ 또는 <span class="kbd">B</span> → 빈 작업영역을 드래그해 여러 노드·화살표를 선택합니다. 선택된 노드 하나를 끌면 선택된 노드가 함께 이동하며, 이동·삭제 같은 액션 뒤에는 블록 선택이 자동 해제됩니다.</li>
+        <li><b>블록 지정:</b> 상단 ‘블록지정’ 또는 <span class="kbd">B</span> → 빈 작업영역을 드래그해 여러 노드·화살표를 선택합니다. 선택 후 점선으로 표시되는 선택영역을 끌면 노드·이미지가 함께 이동합니다. Delete 또는 선택영역 우클릭으로 함께 삭제할 수 있으며, 액션 뒤에는 블록 선택이 자동 해제됩니다.</li>
         <li><b>크기 변경:</b> 노드를 선택한 뒤 오른쪽 아래의 파란 손잡이를 드래그합니다. 일반 노드와 이미지 노드 모두 가로·세로를 자유롭게 조절할 수 있습니다.</li>
         <li><b>화살표 생성:</b> ‘화살표’ 버튼 → 시작 노드 → 도착 노드 순서로 클릭합니다.</li>
         <li><b>상세 정보:</b> 노드를 선택한 뒤 오른쪽에서 설명, 담당자, 상태, 날짜, 태그 등을 입력합니다.</li>
@@ -785,12 +812,14 @@
   const toast = el('toast');
   const connectionBanner = el('connectionBanner');
   const blockSelectRect = el('blockSelectRect');
+  const groupSelectionBox = el('groupSelectionBox');
 
   let app = loadLocal() || createInitialState();
   let selection = null; // {type:'node'|'edge', id}
   let blockMode = false;
   let blockSelection = { nodeIds: new Set(), edgeIds: new Set() };
   let blockDragState = null;
+  let groupMoveState = null;
   let connectMode = false;
   let connectSourceId = null;
   let dragState = null;
@@ -1607,6 +1636,7 @@
       }
       edgeSvg.appendChild(group);
     });
+    renderGroupSelectionBox();
   }
 
   function routeEdge(edge, index) {
@@ -1774,7 +1804,7 @@
       const count = blockSelection.nodeIds.size + blockSelection.edgeIds.size;
       inspectorTitle.textContent = '블록 선택';
       inspectorSub.textContent = `${count}개 개체가 선택되었습니다.`;
-      inspectorBody.innerHTML = `<div class="empty-state">선택된 노드 하나를 드래그하면 함께 이동합니다.<br><br><b>Delete</b> 키로 함께 삭제할 수 있습니다.<br>이동·삭제 후 블록 지정은 자동으로 해제됩니다.</div>`;
+      inspectorBody.innerHTML = `<div class="empty-state">점선으로 표시된 <b>선택 그룹 영역</b>을 드래그하면 선택된 노드와 이미지가 함께 이동합니다.<br><br><b>Delete</b> 키 또는 선택영역 우클릭으로 함께 삭제할 수 있습니다.<br>이동·삭제 후 블록 지정은 자동으로 해제됩니다.</div>`;
       return;
     }
     if (!selection) {
@@ -1998,6 +2028,114 @@
     scheduleSave();
   }
 
+  function getBlockBounds() {
+    if (!blockSelection.nodeIds.size && !blockSelection.edgeIds.size) return null;
+    const xs = [], ys = [];
+    blockSelection.nodeIds.forEach(id => {
+      const n = getNode(id);
+      if (!n) return;
+      const sz = nodeSize(n);
+      xs.push(n.x, n.x + sz.width);
+      ys.push(n.y, n.y + sz.height);
+    });
+    project().edges.forEach((edge, index) => {
+      if (!blockSelection.edgeIds.has(edge.id)) return;
+      const pts = routeEdge(edge, index);
+      pts.forEach(pt => { xs.push(pt.x); ys.push(pt.y); });
+    });
+    if (!xs.length || !ys.length) return null;
+    const pad = 14;
+    const minX = Math.min(...xs) - pad;
+    const minY = Math.min(...ys) - pad;
+    const maxX = Math.max(...xs) + pad;
+    const maxY = Math.max(...ys) + pad;
+    return {x:minX, y:minY, width:maxX-minX, height:maxY-minY};
+  }
+
+  function renderGroupSelectionBox() {
+    const b = getBlockBounds();
+    if (!b) {
+      groupSelectionBox.classList.remove('show');
+      return;
+    }
+    groupSelectionBox.style.left = `${b.x}px`;
+    groupSelectionBox.style.top = `${b.y}px`;
+    groupSelectionBox.style.width = `${Math.max(8,b.width)}px`;
+    groupSelectionBox.style.height = `${Math.max(8,b.height)}px`;
+    groupSelectionBox.classList.add('show');
+  }
+
+  function beginGroupMove(e) {
+    if (e.button !== 0 || !blockSelection.nodeIds.size) return;
+    e.preventDefault();
+    e.stopPropagation();
+    hideContextMenu();
+    const v = project().view;
+    const startPositions = new Map();
+    blockSelection.nodeIds.forEach(id => {
+      const n = getNode(id);
+      if (!n) return;
+      const sz = nodeSize(n);
+      startPositions.set(id, {x:n.x, y:n.y, width:sz.width, height:sz.height});
+    });
+    if (!startPositions.size) return;
+    groupMoveState = {
+      startMouseX:e.clientX,
+      startMouseY:e.clientY,
+      zoom:v.zoom,
+      startPositions,
+      moved:false,
+      checkpointed:false
+    };
+    window.addEventListener('mousemove', moveGroupSelection);
+    window.addEventListener('mouseup', endGroupMove, {once:true});
+  }
+
+  function moveGroupSelection(e) {
+    if (!groupMoveState) return;
+    let dx = (e.clientX - groupMoveState.startMouseX) / groupMoveState.zoom;
+    let dy = (e.clientY - groupMoveState.startMouseY) / groupMoveState.zoom;
+    if (Math.hypot(dx,dy) > 2) groupMoveState.moved = true;
+    if (!groupMoveState.moved) return;
+    if (!groupMoveState.checkpointed) { checkpoint(); groupMoveState.checkpointed = true; }
+    const starts = [...groupMoveState.startPositions.values()];
+    dx = clamp(dx, Math.max(...starts.map(p => -p.x)), Math.min(...starts.map(p => WORLD_W - p.width - p.x)));
+    dy = clamp(dy, Math.max(...starts.map(p => -p.y)), Math.min(...starts.map(p => WORLD_H - p.height - p.y)));
+    groupMoveState.startPositions.forEach((pos,id) => {
+      const n = getNode(id);
+      if (!n) return;
+      n.x = pos.x + dx;
+      n.y = pos.y + dy;
+      const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(id)}"]`);
+      if (div) { div.style.left = `${n.x}px`; div.style.top = `${n.y}px`; }
+    });
+    renderEdges();
+  }
+
+  function endGroupMove() {
+    if (groupMoveState?.moved) {
+      scheduleSave();
+      clearBlockSelection(false);
+      selection = null;
+      renderNodes(); renderEdges(); renderInspector(); updateModeUI();
+      showToast('선택 그룹을 이동했습니다. 블록 지정이 해제되었습니다.');
+    }
+    groupMoveState = null;
+    window.removeEventListener('mousemove', moveGroupSelection);
+  }
+
+  function showGroupContextMenu(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    contextMenu.innerHTML = '';
+    contextMenu.appendChild(menuItem('선택 항목 삭제', true, () => { hideContextMenu(); deleteSelection(); }));
+    const x = Math.min(e.clientX, window.innerWidth - 190);
+    const y = Math.min(e.clientY, window.innerHeight - 90);
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+    contextMenu.classList.add('show');
+  }
+
   function showContextMenu(e, target) {
     e.preventDefault();
     e.stopPropagation();
@@ -2049,6 +2187,7 @@
     blockSelection.nodeIds.clear();
     blockSelection.edgeIds.clear();
     blockSelectRect.classList.remove('show');
+    groupSelectionBox.classList.remove('show');
     blockDragState = null;
     if (shouldRender) { renderNodes(); renderEdges(); renderInspector(); updateModeUI(); }
   }
@@ -2097,7 +2236,7 @@
       const count = blockSelection.nodeIds.size + blockSelection.edgeIds.size;
       el('statusMode').textContent = `블록 ${count}개`;
       el('statusMode').classList.remove('connect');
-      el('statusInfo').textContent = '선택된 노드 하나를 드래그하면 함께 이동 · Delete: 함께 삭제 · 액션 후 자동 해제';
+      el('statusInfo').textContent = '점선 선택영역 드래그: 전체 이동 · Delete/우클릭: 함께 삭제 · 액션 후 자동 해제';
     } else {
       el('statusMode').textContent = '선택';
       el('statusMode').classList.remove('connect');
@@ -2416,6 +2555,10 @@
   el('closeHelpBtn').addEventListener('click', () => el('helpOverlay').classList.remove('show'));
   el('helpOverlay').addEventListener('click', e => { if (e.target === el('helpOverlay')) el('helpOverlay').classList.remove('show'); });
 
+  groupSelectionBox.addEventListener('mousedown', beginGroupMove);
+  groupSelectionBox.addEventListener('click', e => e.stopPropagation());
+  groupSelectionBox.addEventListener('contextmenu', showGroupContextMenu);
+
   viewport.addEventListener('mousedown', beginPan);
   viewport.addEventListener('click', e => {
     if (e.target === viewport || e.target === world || e.target === nodesLayer || e.target === edgeSvg) {
@@ -2426,7 +2569,7 @@
     }
   });
   viewport.addEventListener('contextmenu', e => {
-    if (!e.target.closest('.node') && !e.target.closest('.edge-hit')) e.preventDefault();
+    if (!e.target.closest('.node') && !e.target.closest('.edge-hit') && e.target !== groupSelectionBox) e.preventDefault();
   });
   viewport.addEventListener('wheel', e => {
     e.preventDefault();
