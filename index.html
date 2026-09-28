@@ -101,6 +101,9 @@
 
     .toolbar-spacer { flex: 1; }
     .toolbar-sep { width: 1px; height: 28px; background: var(--border); margin: 0 2px; }
+    .backup-control { display:flex; align-items:center; gap:6px; padding:0 4px; color:#475569; font-size:12px; white-space:nowrap; }
+    .backup-control input[type="time"] { height:32px; border:1px solid var(--border); border-radius:8px; padding:0 7px; background:#fff; color:var(--text); font:inherit; }
+    .backup-last { color:#64748b; font-size:11px; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
 
     .zoom-label {
       min-width: 58px;
@@ -257,6 +260,22 @@
       text-align: center;
     }
 
+    .node.circle-node {
+      border-radius: 50%;
+      /* v18: percentage padding was relative to the 12000px world and caused giant ellipses. */
+      padding: 16px 20px;
+      overflow: visible;
+    }
+
+    .node.circle-node.image-node {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .node.circle-node .node-image {
+      border-radius: 50%;
+    }
+
     .node.image-node {
       width: 184px;
       height: 184px;
@@ -375,6 +394,11 @@
 
     .node.selected .resize-handle { display: block; }
     .node.image-node .resize-handle { background-color: rgba(255,255,255,.96); }
+    /* 원형 노드의 리사이즈 손잡이는 원을 둘러싼 가상의 정사각형 우하단에 둔다. */
+    .node.circle-node .resize-handle {
+      right: -11px;
+      bottom: -11px;
+    }
 
     .node-title {
       width: 100%;
@@ -701,8 +725,9 @@
 <body>
   <div class="app">
     <header class="toolbar">
-      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">SELECTION PERSIST v14</span></div>
-      <button id="addNodeBtn" class="tool-btn" title="화면 중앙에 새 노드 생성 (N)"><span>＋</span><span class="label">노드</span></button>
+      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">ELLIPSE RESIZE FIX v18</span></div>
+      <button id="addNodeBtn" class="tool-btn" title="화면 중앙에 새 사각형 노드 생성 (N)"><span>＋</span><span class="label">사각노드</span></button>
+      <button id="addCircleNodeBtn" class="tool-btn" title="화면 중앙에 새 원형 노드 생성"><span>○</span><span class="label">원형노드</span></button>
       <button id="addImageNodeBtn" class="tool-btn" title="이미지를 노드로 추가"><span>🖼</span><span class="label">이미지</span></button>
       <input id="imageInput" type="file" accept="image/*" hidden />
       <button id="connectBtn" class="tool-btn" title="화살표 연결 모드 (C)"><span>↗</span><span class="label">화살표</span></button>
@@ -715,6 +740,10 @@
       <button id="undoBtn" class="tool-btn icon-only" title="실행 취소 (Ctrl+Z)">↶</button>
       <button id="redoBtn" class="tool-btn icon-only" title="다시 실행 (Ctrl+Y)">↷</button>
       <div class="toolbar-spacer"></div>
+      <div class="backup-control" title="페이지가 열려 있을 때 지정 시각 이후 하루 1회 JSON 백업 파일을 자동 저장합니다.">
+        <span>백업</span><input id="backupTimeInput" type="time" step="60" value="18:00" aria-label="자동 백업 시간">
+        <span id="backupLastLabel" class="backup-last">미실행</span>
+      </div>
       <button id="zoomOutBtn" class="tool-btn icon-only" title="축소">−</button>
       <div id="zoomLabel" class="zoom-label">100%</div>
       <button id="zoomInBtn" class="tool-btn icon-only" title="확대">＋</button>
@@ -762,10 +791,11 @@
     <div class="help-card">
       <h2>MindMap Studio 사용법</h2>
       <ul>
-        <li><b>노드 생성:</b> 상단의 ‘노드’ 버튼 또는 <span class="kbd">N</span>. 현재 보이는 화면 중앙에 생성됩니다.</li>
+        <li><b>노드 생성:</b> 상단의 ‘사각노드’ 또는 ‘원형노드’ 버튼으로 생성합니다. <span class="kbd">N</span>은 사각형 노드입니다.</li>
         <li><b>이미지 노드:</b> 상단의 ‘이미지’ 버튼으로 사진을 불러오면 화면 중앙에 이미지 노드가 생성됩니다. 이미지 전체가 잘리지 않도록 노드 안에 자동 맞춤됩니다.</li>
         <li><b>이름 변경:</b> 일반 노드는 제목을 더블클릭해 입력하고, 이미지 노드는 더블클릭 후 이름을 입력합니다.</li>
         <li><b>노드 이동:</b> 노드를 마우스로 끌어 이동합니다.</li>
+        <li><b>Ctrl 복수선택:</b> Ctrl(맥은 Command)을 누른 채 노드·이미지·화살표를 클릭하면 선택에 추가/제거됩니다. 점선 그룹 박스로 함께 이동하거나 Delete로 함께 삭제할 수 있습니다.</li>
         <li><b>블록 지정:</b> 상단 ‘블록지정’ 또는 <span class="kbd">B</span> → 빈 작업영역을 드래그해 여러 노드·화살표를 선택합니다. 선택 후 점선으로 표시되는 선택영역을 끌면 노드·이미지가 함께 이동합니다. Delete 또는 선택영역 우클릭으로 함께 삭제할 수 있으며, 액션 뒤에는 블록 선택이 자동 해제됩니다.</li>
         <li><b>크기 변경:</b> 노드를 선택한 뒤 오른쪽 아래의 파란 손잡이를 드래그합니다. 일반 노드와 이미지 노드 모두 가로·세로를 자유롭게 조절할 수 있습니다.</li>
         <li><b>화살표 생성:</b> ‘화살표’ 버튼 → 시작 노드 → 도착 노드 순서로 클릭합니다.</li>
@@ -774,6 +804,7 @@
         <li><b>프로젝트 페이지:</b> 상단 탭의 + 버튼으로 페이지를 추가합니다. 탭을 더블클릭하면 프로젝트 이름을 바꿀 수 있습니다.</li>
         <li><b>교차선 회피:</b> 화살표 교차 부분은 자동으로 점프 모양으로 표시됩니다.</li>
         <li><b>이동/확대:</b> 빈 배경을 드래그해 이동하고 마우스 휠로 확대/축소합니다.</li>
+        <li><b>자동 백업:</b> 상단 ‘백업’ 시간을 24시간 형식으로 지정하면 페이지가 열려 있는 동안 해당 시각 이후 하루 1회 JSON 백업 파일을 자동 내려받습니다.</li>
         <li><b>저장:</b> 브라우저에 자동 저장되며, ‘저장’ 버튼으로 JSON 파일을 내려받을 수 있습니다.</li>
       </ul>
       <button id="closeHelpBtn" class="tool-btn" style="width:100%; margin-top:10px;">닫기</button>
@@ -843,6 +874,9 @@
   ensureState();
   pushHistory(true);
   renderAll();
+  updateBackupUI();
+  checkScheduledBackup();
+  setInterval(checkScheduledBackup, 30000);
 
   function createInitialState() {
     const projectId = uid('p');
@@ -861,6 +895,10 @@
 
   function ensureState() {
     if (!app || !Array.isArray(app.projects) || app.projects.length === 0) app = createInitialState();
+    app.settings ||= {};
+    app.settings.backupTime = /^\d{2}:\d{2}$/.test(app.settings.backupTime || '') ? app.settings.backupTime : '18:00';
+    app.settings.lastBackupDate ||= '';
+    app.settings.lastBackupAt ||= '';
     app.projects.forEach((p, i) => {
       p.id ||= uid('p');
       p.name ||= `프로젝트 ${i + 1}`;
@@ -880,6 +918,7 @@
         n.tags ||= '';
         n.link ||= '';
         n.type = n.type === 'image' ? 'image' : 'text';
+        n.shape = n.shape === 'circle' ? 'circle' : 'rect';
         n.imageData ||= '';
         n.imageName ||= '';
         n.fontSize = clamp(Number.isFinite(n.fontSize) ? n.fontSize : DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE);
@@ -889,6 +928,15 @@
         } else {
           n.width = clamp(Number.isFinite(n.width) ? n.width : NODE_W, MIN_TEXT_W, MAX_NODE_SIZE);
           n.height = clamp(Number.isFinite(n.height) ? n.height : NODE_H, MIN_TEXT_H, MAX_NODE_SIZE);
+        }
+        if (n.shape === 'circle') {
+          // v18: 원형/타원형 노드는 가로·세로를 독립적으로 유지한다.
+          // 과거 버전의 circleDiameter는 호환용으로만 남기고 렌더링에는 사용하지 않는다.
+          n.width = clamp(Number.isFinite(n.width) ? n.width : NODE_W,
+            n.type === 'image' ? MIN_IMAGE_SIZE : MIN_TEXT_W, MAX_NODE_SIZE);
+          n.height = clamp(Number.isFinite(n.height) ? n.height : NODE_W,
+            n.type === 'image' ? MIN_IMAGE_SIZE : MIN_TEXT_H, MAX_NODE_SIZE);
+          n.circleDiameter = null;
         }
       });
       p.edges.forEach(e => {
@@ -916,6 +964,14 @@
   function getEdge(id) { return project().edges.find(e => e.id === id); }
   function nodeSize(node) {
     if (!node) return { width: NODE_W, height: NODE_H };
+    if (node.shape === 'circle') {
+      return {
+        width: clamp(Number.isFinite(node.width) ? node.width : NODE_W,
+          node.type === 'image' ? MIN_IMAGE_SIZE : MIN_TEXT_W, MAX_NODE_SIZE),
+        height: clamp(Number.isFinite(node.height) ? node.height : NODE_W,
+          node.type === 'image' ? MIN_IMAGE_SIZE : MIN_TEXT_H, MAX_NODE_SIZE)
+      };
+    }
     if (node.type === 'image') {
       return {
         width: clamp(Number.isFinite(node.width) ? node.width : IMAGE_NODE_SIZE, MIN_IMAGE_SIZE, MAX_NODE_SIZE),
@@ -1055,7 +1111,7 @@
     const activeId = project().id;
     project().nodes.filter(node => !node.projectId || node.projectId === activeId).forEach(node => {
       const div = document.createElement('div');
-      div.className = `node${node.type === 'image' ? ' image-node' : ''}`;
+      div.className = `node${node.type === 'image' ? ' image-node' : ''}${node.shape === 'circle' ? ' circle-node' : ''}`;
       if (selection?.type === 'node' && selection.id === node.id) div.classList.add('selected');
       if (blockSelection.nodeIds.has(node.id)) div.classList.add('block-selected');
       if (connectSourceId === node.id) div.classList.add('connection-source');
@@ -1063,6 +1119,10 @@
       div.style.left = `${node.x}px`;
       div.style.top = `${node.y}px`;
       const size = nodeSize(node);
+      if (node.shape === 'circle') {
+        node.width = size.width;
+        node.height = size.height;
+      }
       div.style.width = `${size.width}px`;
       div.style.height = `${size.height}px`;
 
@@ -1173,8 +1233,13 @@
     const metaHeight = meta && chips.length ? Math.ceil(meta.scrollHeight) + 6 : 0;
     const neededHeight = titleHeight + metaHeight + verticalChrome;
     const maxAllowedHeight = Math.max(MIN_TEXT_H, Math.min(MAX_NODE_SIZE, WORLD_H - node.y));
-    const targetHeight = clamp(Math.max(current.height, neededHeight), MIN_TEXT_H, Math.max(current.height, maxAllowedHeight));
+    let targetHeight = clamp(Math.max(current.height, neededHeight), MIN_TEXT_H, Math.max(current.height, maxAllowedHeight));
 
+    if (node.shape === 'circle') {
+      // v18: 사용자가 만든 타원 비율을 존중한다. 텍스트가 넘칠 때 필요한 축만 최소한으로 확장한다.
+      targetWidth = clamp(targetWidth, MIN_TEXT_W, Math.min(MAX_NODE_SIZE, WORLD_W - node.x));
+      targetHeight = clamp(targetHeight, MIN_TEXT_H, Math.min(MAX_NODE_SIZE, WORLD_H - node.y));
+    }
     const changed = Math.abs(targetWidth - current.width) > .5 || Math.abs(targetHeight - current.height) > .5;
     if (changed) {
       node.width = targetWidth;
@@ -1282,9 +1347,28 @@
     sel.addRange(range);
   }
 
+  function toggleMultiSelection(type, id) {
+    selection = null;
+    cancelConnectMode();
+    const set = type === 'node' ? blockSelection.nodeIds : blockSelection.edgeIds;
+    if (set.has(id)) set.delete(id); else set.add(id);
+    renderNodes();
+    renderEdges();
+    renderGroupSelectionBox();
+    renderInspector();
+    updateModeUI();
+    const count = blockSelection.nodeIds.size + blockSelection.edgeIds.size;
+    showToast(count ? `${count}개 개체를 복수 선택했습니다.` : '복수 선택을 해제했습니다.');
+  }
+
   function onNodeClick(e, nodeId) {
     e.stopPropagation();
     if (dragState?.moved || resizeState?.moved) return;
+
+    if ((e.ctrlKey || e.metaKey) && !connectMode) {
+      toggleMultiSelection('node', nodeId);
+      return;
+    }
 
     if (connectMode) {
       if (!connectSourceId) {
@@ -1362,7 +1446,31 @@
       resizeState.checkpointed = true;
     }
 
-    if (node.type === 'image') {
+    if (node.shape === 'circle') {
+      const minW = node.type === 'image' ? MIN_IMAGE_SIZE : MIN_TEXT_W;
+      const minH = node.type === 'image' ? MIN_IMAGE_SIZE : MIN_TEXT_H;
+      const maxW = Math.min(MAX_NODE_SIZE, WORLD_W - node.x);
+      const maxH = Math.min(MAX_NODE_SIZE, WORLD_H - node.y);
+
+      if (e.shiftKey) {
+        // Shift: 리사이즈 시작 시점의 가로:세로 비율을 고정한다.
+        const startW = Math.max(1, resizeState.startWidth);
+        const startH = Math.max(1, resizeState.startHeight);
+        let scale;
+        if (Math.abs(dx) >= Math.abs(dy)) scale = (startW + dx) / startW;
+        else scale = (startH + dy) / startH;
+        const minScale = Math.max(minW / startW, minH / startH);
+        const maxScale = Math.min(maxW / startW, maxH / startH);
+        scale = clamp(scale, minScale, maxScale);
+        node.width = startW * scale;
+        node.height = startH * scale;
+      } else {
+        // 기본: 타원형을 허용하며 가로와 세로를 각각 자유롭게 조절한다.
+        node.width = clamp(resizeState.startWidth + dx, minW, maxW);
+        node.height = clamp(resizeState.startHeight + dy, minH, maxH);
+      }
+      node.circleDiameter = null;
+    } else if (node.type === 'image') {
       node.width = clamp(resizeState.startWidth + dx, MIN_IMAGE_SIZE, Math.min(MAX_NODE_SIZE, WORLD_W - node.x));
       node.height = clamp(resizeState.startHeight + dy, MIN_IMAGE_SIZE, Math.min(MAX_NODE_SIZE, WORLD_H - node.y));
     } else {
@@ -1394,6 +1502,7 @@
   function onNodeMouseDown(e, nodeId) {
     if (e.button !== 0 || e.target.isContentEditable) return;
     e.stopPropagation();
+    if ((e.ctrlKey || e.metaKey) && !connectMode) return;
     const node = getNode(nodeId);
     if (!node) return;
     const v = project().view;
@@ -1461,7 +1570,7 @@
     window.removeEventListener('mousemove', onNodeMouseMove);
   }
 
-  function addNode() {
+  function addNode(shape='rect') {
     clearBlockSelection(false);
     blockMode = false;
     const p = project();
@@ -1470,15 +1579,19 @@
     const worldCenterX = (r.width / 2 - v.panX) / v.zoom;
     const worldCenterY = (r.height / 2 - v.panY) / v.zoom;
     checkpoint();
+    const initialW = NODE_W;
+    const initialH = shape === 'circle' ? NODE_W : NODE_H;
     const node = {
       id: uid('n'),
       projectId: p.id,
       title: '새 노드',
-      x: clamp(worldCenterX - NODE_W/2, 0, WORLD_W - NODE_W),
-      y: clamp(worldCenterY - NODE_H/2, 0, WORLD_H - NODE_H),
-      width: NODE_W,
-      height: NODE_H,
+      x: clamp(worldCenterX - initialW/2, 0, WORLD_W - initialW),
+      y: clamp(worldCenterY - initialH/2, 0, WORLD_H - initialH),
+      width: initialW,
+      height: initialH,
+      circleDiameter: shape === 'circle' ? NODE_W : null,
       type: 'text',
+      shape: shape === 'circle' ? 'circle' : 'rect',
       imageData: '',
       imageName: '',
       fontSize: DEFAULT_FONT_SIZE,
@@ -1490,7 +1603,7 @@
     cancelConnectMode();
     renderAll();
     scheduleSave();
-    showToast('새 노드를 생성했습니다.');
+    showToast(shape === 'circle' ? '새 원형 노드를 생성했습니다.' : '새 사각형 노드를 생성했습니다.');
     requestAnimationFrame(() => {
       const div = nodesLayer.querySelector(`.node[data-id="${cssEscape(node.id)}"]`);
       div?.dispatchEvent(new MouseEvent('dblclick', {bubbles:true}));
@@ -1553,6 +1666,7 @@
       id: uid('n'),
       projectId: p.id,
       type: 'image',
+      shape: 'rect',
       imageData,
       imageName: fileName,
       title: baseTitle,
@@ -1619,6 +1733,7 @@
       const hit = svgEl('path', {d, class:'edge-hit'});
       hit.addEventListener('click', evt => {
         evt.stopPropagation();
+        if ((evt.ctrlKey || evt.metaKey) && !connectMode) { toggleMultiSelection('edge', edge.id); return; }
         if (blockSelection.edgeIds.has(edge.id)) return;
         if (blockSelection.nodeIds.size || blockSelection.edgeIds.size) clearBlockSelection(false);
         selection = {type:'edge', id:edge.id};
@@ -2175,6 +2290,29 @@
         div?.dispatchEvent(new MouseEvent('dblclick', {bubbles:true}));
       });
       contextMenu.appendChild(rename);
+      const node = getNode(target.id);
+      if (node) {
+        const nextShape = node.shape === 'circle' ? 'rect' : 'circle';
+        contextMenu.appendChild(menuItem(nextShape === 'circle' ? '원형으로 변경' : '사각형으로 변경', false, () => {
+          hideContextMenu();
+          checkpoint();
+          node.shape = nextShape;
+          if (nextShape === 'circle') {
+            // 현재 노드 크기를 그대로 유지한 채 원형/타원형 스타일로 전환한다.
+            node.width = clamp(Number.isFinite(node.width) ? node.width : NODE_W,
+              node.type === 'image' ? MIN_IMAGE_SIZE : MIN_TEXT_W,
+              Math.min(MAX_NODE_SIZE, WORLD_W - node.x));
+            node.height = clamp(Number.isFinite(node.height) ? node.height : NODE_H,
+              node.type === 'image' ? MIN_IMAGE_SIZE : MIN_TEXT_H,
+              Math.min(MAX_NODE_SIZE, WORLD_H - node.y));
+            node.circleDiameter = null;
+          } else {
+            node.circleDiameter = null;
+          }
+          renderNodes(); renderEdges(); renderInspector(); scheduleSave();
+          showToast(nextShape === 'circle' ? '노드를 원형으로 변경했습니다.' : '노드를 사각형으로 변경했습니다.');
+        }));
+      }
     }
     if (!inBlock) contextMenu.appendChild(menuItem(target.type === 'node' ? '노드 삭제' : '화살표 삭제', true, () => {
       hideContextMenu();
@@ -2254,7 +2392,7 @@
       const count = blockSelection.nodeIds.size + blockSelection.edgeIds.size;
       el('statusMode').textContent = `블록 ${count}개`;
       el('statusMode').classList.remove('connect');
-      el('statusInfo').textContent = '점선 선택영역 드래그: 전체 이동 · Delete/우클릭: 함께 삭제 · 액션 후 자동 해제';
+      el('statusInfo').textContent = '점선 선택영역 드래그: 전체 이동 · Delete/우클릭: 함께 삭제 · Ctrl/Command 클릭: 선택 추가·제거';
     } else {
       el('statusMode').textContent = '선택';
       el('statusMode').classList.remove('connect');
@@ -2396,6 +2534,56 @@
     scheduleSave(false);
   }
 
+  function localDateStamp(date=new Date()) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth()+1).padStart(2,'0');
+    const d = String(date.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function localTimeStamp(date=new Date()) {
+    return `${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+  }
+
+  function updateBackupUI() {
+    const input = el('backupTimeInput');
+    if (input) input.value = app.settings?.backupTime || '18:00';
+    const label = el('backupLastLabel');
+    if (label) label.textContent = app.settings?.lastBackupAt ? `최근 ${app.settings.lastBackupAt}` : '미실행';
+  }
+
+  function downloadBackupFile(auto=false) {
+    saveLocal();
+    const now = new Date();
+    const data = JSON.stringify(app, null, 2);
+    const blob = new Blob([data], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = localDateStamp(now);
+    const time = localTimeStamp(now).replace(':','');
+    a.href = url;
+    a.download = `mindmap_backup_${date}_${time}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (auto) {
+      app.settings.lastBackupDate = date;
+      app.settings.lastBackupAt = `${date} ${localTimeStamp(now)}`;
+      saveLocal();
+      updateBackupUI();
+      showToast('지정 시간 자동 백업을 저장했습니다.');
+    }
+  }
+
+  function checkScheduledBackup() {
+    const now = new Date();
+    const today = localDateStamp(now);
+    const scheduled = app.settings?.backupTime || '18:00';
+    const current = localTimeStamp(now);
+    if (app.settings?.lastBackupDate !== today && current >= scheduled) downloadBackupFile(true);
+  }
+
   function saveToFile() {
     saveLocal();
     const data = JSON.stringify(app, null, 2);
@@ -2423,6 +2611,7 @@
         history = []; historyIndex = -1;
         pushHistory(true);
         renderAll();
+        updateBackupUI();
         saveLocal();
         showToast('마인드맵 파일을 불러왔습니다.');
       } catch {
@@ -2556,7 +2745,8 @@
   }
 
   // Events
-  el('addNodeBtn').addEventListener('click', addNode);
+  el('addNodeBtn').addEventListener('click', () => addNode('rect'));
+  el('addCircleNodeBtn').addEventListener('click', () => addNode('circle'));
   el('addImageNodeBtn').addEventListener('click', () => openImagePicker('create'));
   el('imageInput').addEventListener('change', e => handleImageFile(e.target.files[0]));
   el('connectBtn').addEventListener('click', toggleConnectMode);
@@ -2564,6 +2754,15 @@
   el('saveBtn').addEventListener('click', saveToFile);
   el('loadBtn').addEventListener('click', () => el('fileInput').click());
   el('fileInput').addEventListener('change', e => e.target.files[0] && loadFromFile(e.target.files[0]));
+  el('backupTimeInput').addEventListener('change', e => {
+    const value = e.target.value;
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) { e.target.value = app.settings.backupTime; showToast('백업 시간을 HH:MM 형식으로 입력하세요.'); return; }
+    app.settings.backupTime = value;
+    app.settings.lastBackupDate = '';
+    scheduleSave(false);
+    updateBackupUI();
+    showToast(`매일 ${value} 이후 자동 백업하도록 설정했습니다.`);
+  });
   el('undoBtn').addEventListener('click', undo);
   el('redoBtn').addEventListener('click', redo);
   el('zoomInBtn').addEventListener('click', () => {
@@ -2613,7 +2812,7 @@
     if (editing) return;
     if (e.key === 'Escape') { cancelConnectMode(); blockMode = false; clearBlockSelection(false); selection = null; renderAll(); }
     if (e.key === 'Delete' || e.key === 'Backspace') { if (selection || blockSelection.nodeIds.size || blockSelection.edgeIds.size) { e.preventDefault(); deleteSelection(); } }
-    if (e.key.toLowerCase() === 'n') addNode();
+    if (e.key.toLowerCase() === 'n') addNode('rect');
     if (e.key.toLowerCase() === 'c') toggleConnectMode();
     if (e.key.toLowerCase() === 'b') toggleBlockMode();
   });
