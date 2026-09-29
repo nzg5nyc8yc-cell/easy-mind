@@ -104,6 +104,12 @@
     .backup-control { display:flex; align-items:center; gap:6px; padding:0 4px; color:#475569; font-size:12px; white-space:nowrap; }
     .backup-control input[type="time"] { height:32px; border:1px solid var(--border); border-radius:8px; padding:0 7px; background:#fff; color:var(--text); font:inherit; }
     .backup-last { color:#64748b; font-size:11px; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
+    .cloud-control { display:flex; align-items:center; gap:6px; padding:0 4px; color:#475569; font-size:12px; white-space:nowrap; }
+    .cloud-dot { width:8px; height:8px; border-radius:50%; background:#94a3b8; box-shadow:0 0 0 2px rgba(148,163,184,.15); }
+    .cloud-dot.ok { background:#16a34a; box-shadow:0 0 0 2px rgba(22,163,74,.15); }
+    .cloud-dot.syncing { background:#f59e0b; box-shadow:0 0 0 2px rgba(245,158,11,.15); }
+    .cloud-dot.error { background:#dc2626; box-shadow:0 0 0 2px rgba(220,38,38,.15); }
+    .cloud-status { max-width:150px; overflow:hidden; text-overflow:ellipsis; }
 
     .zoom-label {
       min-width: 58px;
@@ -725,7 +731,7 @@
 <body>
   <div class="app">
     <header class="toolbar">
-      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">ELLIPSE RESIZE FIX v18</span></div>
+      <div class="brand"><div class="brand-mark">⌘</div><span>MindMap Studio</span><span class="version-badge">CLOUD SYNC v19</span></div>
       <button id="addNodeBtn" class="tool-btn" title="화면 중앙에 새 사각형 노드 생성 (N)"><span>＋</span><span class="label">사각노드</span></button>
       <button id="addCircleNodeBtn" class="tool-btn" title="화면 중앙에 새 원형 노드 생성"><span>○</span><span class="label">원형노드</span></button>
       <button id="addImageNodeBtn" class="tool-btn" title="이미지를 노드로 추가"><span>🖼</span><span class="label">이미지</span></button>
@@ -740,6 +746,12 @@
       <button id="undoBtn" class="tool-btn icon-only" title="실행 취소 (Ctrl+Z)">↶</button>
       <button id="redoBtn" class="tool-btn icon-only" title="다시 실행 (Ctrl+Y)">↷</button>
       <div class="toolbar-spacer"></div>
+      <div class="cloud-control" title="Supabase 클라우드에 현재 마인드맵을 자동 동기화합니다.">
+        <span id="cloudDot" class="cloud-dot"></span>
+        <span id="cloudStatus" class="cloud-status">클라우드 확인 중</span>
+        <button id="cloudSyncBtn" class="tool-btn icon-only" title="지금 동기화">↻</button>
+        <button id="cloudLinkBtn" class="tool-btn icon-only" title="현재 공유 링크 보기">🔗</button>
+      </div>
       <div class="backup-control" title="페이지가 열려 있을 때 지정 시각 이후 하루 1회 JSON 백업 파일을 자동 저장합니다.">
         <span>백업</span><input id="backupTimeInput" type="time" step="60" value="18:00" aria-label="자동 백업 시간">
         <span id="backupLastLabel" class="backup-last">미실행</span>
@@ -804,8 +816,9 @@
         <li><b>프로젝트 페이지:</b> 상단 탭의 + 버튼으로 페이지를 추가합니다. 탭을 더블클릭하면 프로젝트 이름을 바꿀 수 있습니다.</li>
         <li><b>교차선 회피:</b> 화살표 교차 부분은 자동으로 점프 모양으로 표시됩니다.</li>
         <li><b>이동/확대:</b> 빈 배경을 드래그해 이동하고 마우스 휠로 확대/축소합니다.</li>
+        <li><b>클라우드 동기화:</b> Supabase 설정이 완료되면 현재 주소의 <code>?map=...</code> 고유 ID를 기준으로 자동 저장/불러오기가 동작합니다. 같은 전체 링크를 다른 PC에서 열면 같은 상태를 사용합니다.</li>
         <li><b>자동 백업:</b> 상단 ‘백업’ 시간을 24시간 형식으로 지정하면 페이지가 열려 있는 동안 해당 시각 이후 하루 1회 JSON 백업 파일을 자동 내려받습니다.</li>
-        <li><b>저장:</b> 브라우저에 자동 저장되며, ‘저장’ 버튼으로 JSON 파일을 내려받을 수 있습니다.</li>
+        <li><b>저장:</b> 브라우저 로컬 저장과 클라우드 자동 저장을 함께 사용하며, ‘저장’ 버튼으로 JSON 파일도 내려받을 수 있습니다.</li>
       </ul>
       <button id="closeHelpBtn" class="tool-btn" style="width:100%; margin-top:10px;">닫기</button>
     </div>
@@ -829,6 +842,20 @@
   const MAX_FONT_SIZE = 72;
   const AUTO_FIT_MAX_WIDTH = 520;
   const STORAGE_KEY = 'mindmap-studio-v1';
+
+  // ─────────────────────────────────────────────────────────────
+  // CLOUD SYNC SETUP (Supabase)
+  // 1) Supabase 프로젝트 생성
+  // 2) 함께 제공된 supabase_setup.sql을 SQL Editor에서 1회 실행
+  // 3) 아래 두 값을 프로젝트의 Project Settings > API 값으로 교체
+  //    anonKey는 브라우저 앱에 공개하도록 설계된 공개 키입니다.
+  // ─────────────────────────────────────────────────────────────
+  const CLOUD_CONFIG = {
+    supabaseUrl: 'https://yftumlfvrjoqpaxvsxsx.supabase.co/rest/v1/',
+    anonKey: 'sb_publishable_gG0Nv8mfDh6bdHkN-Sa7lA_jpiJh5me',
+    saveDelayMs: 1200,
+    pollMs: 10000
+  };
   const PALETTE = ['#fff3bf','#ffd8a8','#ffc9c9','#d3f9d8','#c5f6fa','#d0ebff','#e5dbff','#f3d9fa','#e9ecef','#ffffff','#dbeafe','#dcfce7'];
 
   const el = id => document.getElementById(id);
@@ -845,6 +872,8 @@
   const connectionBanner = el('connectionBanner');
   const blockSelectRect = el('blockSelectRect');
   const groupSelectionBox = el('groupSelectionBox');
+  const cloudDot = el('cloudDot');
+  const cloudStatus = el('cloudStatus');
   // 선택 박스는 노드/화살표와 동일한 월드 좌표계 안에서 렌더링한다.
   // 화면 좌표 변환이나 fixed overlay에 의존하지 않는다.
   world.appendChild(groupSelectionBox);
@@ -871,12 +900,22 @@
   // renderAll() 안에서 즉시 사용되므로 첫 렌더링 전에 초기화해야 합니다.
   let textAutoFitFrame = null;
 
+  let cloudDocId = null;
+  let cloudInitialized = false;
+  let cloudApplyingRemote = false;
+  let cloudDirty = false;
+  let cloudSaveTimer = null;
+  let cloudSaveInFlight = false;
+  let cloudLastUpdated = null;
+  let cloudPollTimer = null;
+
   ensureState();
   pushHistory(true);
   renderAll();
   updateBackupUI();
   checkScheduledBackup();
   setInterval(checkScheduledBackup, 30000);
+  initCloudSync();
 
   function createInitialState() {
     const projectId = uid('p');
@@ -2534,6 +2573,171 @@
     scheduleSave(false);
   }
 
+  function cloudIsConfigured() {
+    return /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(CLOUD_CONFIG.supabaseUrl || '')
+      && CLOUD_CONFIG.anonKey
+      && !CLOUD_CONFIG.anonKey.includes('YOUR_SUPABASE_ANON_KEY');
+  }
+
+  function getOrCreateCloudDocId() {
+    const url = new URL(location.href);
+    let id = url.searchParams.get('map');
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRe.test(id || '')) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-4aaa-8aaa-${Math.random().toString(16).slice(2,14)}`);
+      if (!uuidRe.test(id)) {
+        const bytes = new Uint8Array(16); crypto.getRandomValues(bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40; bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const h=[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
+        id=`${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+      }
+      url.searchParams.set('map', id);
+      history.replaceState(null, '', url.toString());
+    }
+    return id;
+  }
+
+  function setCloudStatus(text, kind='') {
+    if (cloudStatus) cloudStatus.textContent = text;
+    if (cloudDot) cloudDot.className = `cloud-dot${kind ? ' '+kind : ''}`;
+  }
+
+  async function cloudRpc(name, payload, {keepalive=false}={}) {
+    const base = CLOUD_CONFIG.supabaseUrl.replace(/\/$/, '');
+    const res = await fetch(`${base}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers: {
+        'apikey': CLOUD_CONFIG.anonKey,
+        'Authorization': `Bearer ${CLOUD_CONFIG.anonKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      keepalive
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(()=> '');
+      throw new Error(`Cloud ${name} failed: ${res.status} ${detail}`);
+    }
+    if (res.status === 204) return null;
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  function cloudTimestamp(value) {
+    const t = value ? new Date(value).getTime() : 0;
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  async function initCloudSync() {
+    cloudDocId = getOrCreateCloudDocId();
+    if (!cloudIsConfigured()) {
+      setCloudStatus('클라우드 설정 필요');
+      return;
+    }
+    setCloudStatus('클라우드 연결 중', 'syncing');
+    try {
+      const remote = await cloudRpc('mindmap_load', {p_id: cloudDocId});
+      if (remote && remote.data && Array.isArray(remote.data.projects)) {
+        cloudApplyingRemote = true;
+        app = remote.data;
+        ensureState();
+        selection = null;
+        blockSelection = { nodeIds: new Set(), edgeIds: new Set() };
+        cancelConnectMode();
+        history = []; historyIndex = -1;
+        pushHistory(true);
+        renderAll();
+        updateBackupUI();
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(app)); } catch {}
+        cloudApplyingRemote = false;
+        cloudLastUpdated = remote.updated_at || null;
+        cloudDirty = false;
+        cloudInitialized = true;
+        setCloudStatus('클라우드 동기화됨', 'ok');
+        showToast('웹에 저장된 마인드맵을 불러왔습니다.');
+      } else {
+        cloudInitialized = true;
+        cloudDirty = true;
+        await saveCloudNow();
+        showToast('현재 상태를 웹 저장소에 처음 저장했습니다.');
+      }
+      clearInterval(cloudPollTimer);
+      cloudPollTimer = setInterval(checkCloudForUpdates, CLOUD_CONFIG.pollMs);
+    } catch (err) {
+      console.warn(err);
+      cloudApplyingRemote = false;
+      cloudInitialized = false;
+      setCloudStatus('클라우드 연결 실패', 'error');
+    }
+  }
+
+  function scheduleCloudSave() {
+    if (!cloudInitialized || cloudApplyingRemote || !cloudIsConfigured()) return;
+    cloudDirty = true;
+    setCloudStatus('저장 대기', 'syncing');
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(() => saveCloudNow(), CLOUD_CONFIG.saveDelayMs);
+  }
+
+  async function saveCloudNow({keepalive=false}={}) {
+    if (!cloudIsConfigured() || !cloudInitialized || cloudApplyingRemote) return;
+    if (cloudSaveInFlight && !keepalive) return;
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = null;
+    cloudSaveInFlight = true;
+    setCloudStatus('웹에 저장 중', 'syncing');
+    try {
+      const result = await cloudRpc('mindmap_save', {p_id: cloudDocId, p_data: app}, {keepalive});
+      cloudLastUpdated = result?.updated_at || new Date().toISOString();
+      cloudDirty = false;
+      setCloudStatus('클라우드 동기화됨', 'ok');
+    } catch (err) {
+      console.warn(err);
+      cloudDirty = true;
+      setCloudStatus('웹 저장 실패', 'error');
+    } finally {
+      cloudSaveInFlight = false;
+    }
+  }
+
+  async function checkCloudForUpdates() {
+    if (!cloudInitialized || cloudDirty || cloudSaveInFlight || document.hidden) return;
+    try {
+      const meta = await cloudRpc('mindmap_meta', {p_id: cloudDocId});
+      const remoteTs = cloudTimestamp(meta?.updated_at);
+      const localTs = cloudTimestamp(cloudLastUpdated);
+      if (!remoteTs || remoteTs <= localTs) return;
+      setCloudStatus('다른 PC 변경 확인', 'syncing');
+      const remote = await cloudRpc('mindmap_load', {p_id: cloudDocId});
+      if (!remote?.data || !Array.isArray(remote.data.projects)) return;
+      cloudApplyingRemote = true;
+      app = remote.data;
+      ensureState();
+      selection = null;
+      blockSelection = { nodeIds: new Set(), edgeIds: new Set() };
+      cancelConnectMode();
+      history = []; historyIndex = -1;
+      pushHistory(true);
+      renderAll();
+      updateBackupUI();
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(app)); } catch {}
+      cloudApplyingRemote = false;
+      cloudLastUpdated = remote.updated_at || meta.updated_at;
+      cloudDirty = false;
+      setCloudStatus('다른 PC 변경 반영됨', 'ok');
+      showToast('다른 PC에서 변경된 내용을 불러왔습니다.');
+    } catch (err) {
+      console.warn(err);
+      setCloudStatus('클라우드 확인 실패', 'error');
+    }
+  }
+
+  function showCloudLink() {
+    const url = new URL(location.href);
+    if (cloudDocId) url.searchParams.set('map', cloudDocId);
+    window.prompt('다른 PC에서 아래 전체 링크를 그대로 여세요.', url.toString());
+  }
+
   function localDateStamp(date=new Date()) {
     const y = date.getFullYear();
     const m = String(date.getMonth()+1).padStart(2,'0');
@@ -2631,6 +2835,7 @@
   function saveLocal() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(app)); }
     catch (err) { console.warn('자동 저장 실패', err); }
+    if (!cloudApplyingRemote) scheduleCloudSave();
   }
 
   function loadLocal() {
@@ -2752,6 +2957,8 @@
   el('connectBtn').addEventListener('click', toggleConnectMode);
   el('blockBtn').addEventListener('click', toggleBlockMode);
   el('saveBtn').addEventListener('click', saveToFile);
+  el('cloudSyncBtn').addEventListener('click', () => cloudInitialized ? saveCloudNow() : initCloudSync());
+  el('cloudLinkBtn').addEventListener('click', showCloudLink);
   el('loadBtn').addEventListener('click', () => el('fileInput').click());
   el('fileInput').addEventListener('change', e => e.target.files[0] && loadFromFile(e.target.files[0]));
   el('backupTimeInput').addEventListener('change', e => {
@@ -2818,7 +3025,8 @@
   });
 
   window.addEventListener('resize', () => applyTransform());
-  window.addEventListener('beforeunload', saveLocal);
+  window.addEventListener('beforeunload', () => { saveLocal(); if (cloudDirty && cloudInitialized) saveCloudNow({keepalive:true}); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && cloudDirty && cloudInitialized) saveCloudNow({keepalive:true}); });
 })();
 </script>
 </body>
